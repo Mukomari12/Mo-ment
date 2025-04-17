@@ -13,10 +13,16 @@ export const theme = {
     onBackground: '#3c2c1d', // camel 900
   },
   fonts: {
-    titleLarge:  { fontFamily: 'PTSerif-Bold',    fontSize: 24 },
-    titleMedium: { fontFamily: 'PTSerif-Bold',    fontSize: 20 },
-    bodyLarge:   { fontFamily: 'PTSerif-Regular', fontSize: 18 },
-    bodyMedium:  { fontFamily: 'PTSerif-Regular', fontSize: 16 },
-    labelSmall:  { fontFamily: 'PTSerif-Regular', fontSize: 12 },
+    headlineLarge: { fontFamily: 'PTSerif-Bold',    fontSize: 32 },
+    headlineMedium: { fontFamily: 'PTSerif-Bold',   fontSize: 28 },
+    headlineSmall: { fontFamily: 'PTSerif-Bold',    fontSize: 24 },
+    titleLarge:  { fontFamily: 'PTSerif-Bold',      fontSize: 24 },
+    titleMedium: { fontFamily: 'PTSerif-Bold',      fontSize: 20 },
+    bodyLarge:   { fontFamily: 'PTSerif-Regular',   fontSize: 18 },
+    bodyMedium:  { fontFamily: 'PTSerif-Regular',   fontSize: 16 },
+    bodySmall:   { fontFamily: 'PTSerif-Regular',   fontSize: 14 },
+    labelLarge:  { fontFamily: 'PTSerif-Regular',   fontSize: 14 },
+    labelMedium: { fontFamily: 'PTSerif-Regular',   fontSize: 13 },
+    labelSmall:  { fontFamily: 'PTSerif-Regular',   fontSize: 12 },
   },
 } as const; 
