@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, FlatList, SafeAreaView } from 'react-native';
 import { 
   FAB, 
@@ -10,6 +10,7 @@ import {
   Dialog, 
   Button,
   useTheme,
+  Snackbar,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -20,6 +21,7 @@ import PaperSheet from '../components/PaperSheet';
 import EmptyState from '../components/EmptyState';
 import { useSpacing } from '../utils/useSpacing';
 import { RFValue } from 'react-native-responsive-fontsize';
+import { useEras } from '../hooks/useEras';
 
 type DashboardScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
@@ -30,6 +32,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const { hPad } = useSpacing();
   const [entryDialogVisible, setEntryDialogVisible] = useState(false);
   const entries = useJournalStore(state => state.entries);
+  const { error: erasError, eras } = useEras();
+  const [error, setError] = useState<string | null>(null);
+
+  // Display error from eras generation if any
+  useEffect(() => {
+    if (erasError) {
+      setError(erasError);
+    }
+  }, [erasError]);
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -222,6 +233,17 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </Dialog>
         </Portal>
       </SafeAreaView>
+
+      <Snackbar
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setError(null),
+        }}
+      >
+        {error}
+      </Snackbar>
     </PaperSheet>
   );
 };

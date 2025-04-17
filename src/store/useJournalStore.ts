@@ -10,6 +10,12 @@ export type Entry = {
   createdAt: number;
 };
 
+export type Era = {
+  label: string;
+  from: string; // ISO date
+  to: string;   // ISO date
+};
+
 interface JournalState {
   entries: Entry[];
   addEntry: (e: Omit<Entry, 'id' | 'createdAt'>) => void;
@@ -20,6 +26,8 @@ interface JournalState {
     theme: 'light' | 'dark' | 'system' 
   };
   setSettings: (p: Partial<JournalState['settings']>) => void;
+  eras: Era[];
+  setEras: (e: Era[]) => void;
 }
 
 // Mock data for entries
@@ -118,5 +126,9 @@ export const useJournalStore = create<JournalState>((set) => ({
       ...state.settings,
       ...newSettings,
     },
+  })),
+  eras: [],
+  setEras: (newEras) => set(() => ({
+    eras: newEras,
   })),
 })); 

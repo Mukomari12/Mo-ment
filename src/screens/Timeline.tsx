@@ -1,84 +1,38 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, FlatList, Dimensions } from 'react-native';
-import { Appbar, Text, Card, useTheme } from 'react-native-paper';
+import { Appbar, Text, Card, useTheme, Button, ActivityIndicator, Snackbar } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useEras } from '../hooks/useEras';
+import { useJournalStore } from '../store/useJournalStore';
 
 type TimelineScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Timeline'>;
 };
 
-// Mock data for life eras
-const lifeEras = [
-  {
-    id: '1',
-    title: 'College Years',
-    startDate: '2018',
-    endDate: '2022',
-    description: 'Four years of intensive learning, making friends, and discovering my true interests.',
-    color: '#4CAF50', // Green
-    icon: 'school' as any,
-  },
-  {
-    id: '2',
-    title: 'First Job',
-    startDate: '2022',
-    endDate: '2023',
-    description: 'Started my career as a junior developer at TechCorp, learning the ropes of professional work.',
-    color: '#2196F3', // Blue
-    icon: 'briefcase' as any,
-  },
-  {
-    id: '3',
-    title: 'Freelancing',
-    startDate: '2023',
-    endDate: 'Present',
-    description: 'Took the leap to freelance, working on exciting projects and managing my own schedule.',
-    color: '#9C27B0', // Purple
-    icon: 'laptop' as any,
-  },
-  {
-    id: '4',
-    title: 'Travel Sabbatical',
-    startDate: '2024',
-    endDate: '2024',
-    description: 'Took three months off to travel around Southeast Asia, a life-changing experience.',
-    color: '#FF9800', // Orange
-    icon: 'airplane' as any,
-  },
-];
+// Default icons to use for eras
+const defaultIcons = [
+  'school',
+  'briefcase',
+  'laptop',
+  'airplane',
+  'home',
+  'heart',
+  'account-group',
+  'book-open-variant',
+] as const;
 
-// Mock data for key events
-const keyEvents = [
-  {
-    id: '1',
-    title: 'Graduation',
-    date: 'May 2022',
-    description: 'Graduated with honors in Computer Science',
-    eraId: '1',
-  },
-  {
-    id: '2',
-    title: 'First Client',
-    date: 'January 2023',
-    description: 'Landed my first major freelance client',
-    eraId: '3',
-  },
-  {
-    id: '3',
-    title: 'Promotion',
-    date: 'November 2022',
-    description: 'Promoted to mid-level developer after 6 months',
-    eraId: '2',
-  },
-  {
-    id: '4',
-    title: 'Visited Thailand',
-    date: 'February 2024',
-    description: 'Spent 3 weeks exploring Thailand',
-    eraId: '4',
-  },
+// Default colors for eras
+const defaultColors = [
+  '#4CAF50', // Green
+  '#2196F3', // Blue
+  '#9C27B0', // Purple
+  '#FF9800', // Orange
+  '#F44336', // Red
+  '#00BCD4', // Cyan
+  '#009688', // Teal
+  '#FFEB3B', // Yellow
 ];
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -87,8 +41,64 @@ const CARD_MARGIN = 16;
 
 const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
   const theme = useTheme();
+  const { eras, recompute, isComputing, error } = useEras();
+  const entries = useJournalStore(state => state.entries);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  const renderLifeEra = ({ item }: { item: typeof lifeEras[0] }) => {
+  useEffect(() => {
+    if (error) {
+      setSnackbarMessage(error);
+      setSnackbarVisible(true);
+    }
+  }, [error]);
+
+  // Map eras to UI-friendly format
+  const mappedEras = eras.map((era, index) => {
+    // Generate start and end year from ISO dates
+    const startYear = new Date(era.from).getFullYear();
+    const endYear = new Date(era.to).getFullYear();
+    const now = new Date().getFullYear();
+    
+    return {
+      id: index.toString(),
+      title: era.label,
+      startDate: startYear.toString(),
+      endDate: endYear === now ? 'Present' : endYear.toString(),
+      description: `This era spans from ${startYear} to ${endYear === now ? 'now' : endYear}.`,
+      color: defaultColors[index % defaultColors.length],
+      icon: defaultIcons[index % defaultIcons.length],
+    };
+  });
+
+  // Get key events (most recent entry from each era)
+  const keyEvents = eras.flatMap((era, eraIndex) => {
+    const eraStart = new Date(era.from).getTime();
+    const eraEnd = new Date(era.to).getTime();
+    
+    // Filter entries that fall within this era's timeframe
+    const eraEntries = entries.filter(entry => {
+      const entryDate = entry.createdAt;
+      return entryDate >= eraStart && entryDate <= eraEnd;
+    });
+    
+    // Get the most significant entry (one with most content)
+    if (eraEntries.length === 0) return [];
+    
+    const mostSignificant = eraEntries.reduce((prev, current) => 
+      current.content.length > prev.content.length ? current : prev
+    );
+    
+    return {
+      id: `event-${eraIndex}`,
+      title: mostSignificant.content.split('\n')[0] || 'Entry',
+      date: new Date(mostSignificant.createdAt).toLocaleDateString(),
+      description: mostSignificant.content.substring(0, 100) + (mostSignificant.content.length > 100 ? '...' : ''),
+      eraId: eraIndex.toString(),
+    };
+  });
+
+  const renderLifeEra = ({ item }: { item: typeof mappedEras[0] }) => {
     const matchingEvents = keyEvents.filter(event => event.eraId === item.id);
     
     return (
@@ -142,26 +152,73 @@ const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
       <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="Life Timeline" />
+        {isComputing ? (
+          <ActivityIndicator size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+        ) : (
+          <Appbar.Action icon="refresh" onPress={recompute} />
+        )}
       </Appbar.Header>
 
       <View style={styles.content}>
         <Text variant="titleMedium" style={styles.sectionTitle}>
-          Your Life Eras
+          Your Life Eras {eras.length > 0 ? `(${eras.length})` : ''}
         </Text>
         
         <Text variant="bodyMedium" style={styles.description}>
-          Scroll horizontally to explore different periods of your life.
+          {eras.length > 0 
+            ? "Scroll horizontally to explore different periods of your life." 
+            : "Add at least 3 journal entries for AI to generate your life eras."}
         </Text>
         
-        <FlatList
-          data={lifeEras}
-          renderItem={renderLifeEra}
-          keyExtractor={item => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-        />
+        {isComputing ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Analyzing your journal entries...</Text>
+          </View>
+        ) : eras.length > 0 ? (
+          <FlatList
+            data={mappedEras}
+            renderItem={renderLifeEra}
+            keyExtractor={item => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+          />
+        ) : entries.length >= 3 ? (
+          <Button 
+            mode="contained" 
+            onPress={recompute}
+            style={styles.generateButton}
+          >
+            Generate Life Eras
+          </Button>
+        ) : (
+          <Card style={styles.emptyCard}>
+            <Card.Content>
+              <MaterialCommunityIcons 
+                name="book-open-page-variant" 
+                size={48} 
+                color={theme.colors.primary}
+                style={{ alignSelf: 'center', marginBottom: 16 }}
+              />
+              <Text style={{ textAlign: 'center' }}>
+                Add at least 3 journal entries first. Then return here to generate your life timeline.
+              </Text>
+            </Card.Content>
+          </Card>
+        )}
       </View>
+      
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </View>
   );
 };
@@ -233,6 +290,22 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderLeftColor: 'rgba(0,0,0,0.1)',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  generateButton: {
+    marginTop: 24,
+  },
+  emptyCard: {
+    marginTop: 24,
+    padding: 16,
+  }
 });
 
 export default TimelineScreen; 

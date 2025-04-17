@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { TextInput, IconButton, Chip, Appbar, useTheme, Text as PaperText } from 'react-native-paper';
+import { TextInput, IconButton, Chip, Appbar, useTheme, Text as PaperText, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useJournalStore } from '../store/useJournalStore';
+import { classifyMood } from '../api/openai';
 
 type TextEntryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'TextEntry'>;
@@ -15,6 +16,8 @@ const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
   const [text, setText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [mood, setMood] = useState<number | undefined>(undefined);
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Mock available tags
   const availableTags = ['Work', 'Personal', 'Family', 'Travel', 'Health', 'Ideas'];
@@ -27,19 +30,37 @@ const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
     );
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!text.trim()) return;
 
-    // Save entry to the store
-    addEntry({
-      type: 'text',
-      content: text,
-      tags: selectedTags,
-      mood,
-    });
+    try {
+      setIsClassifying(true);
+      // Classify the mood based on the text content
+      let entryMood = mood;
+      if (!entryMood) {
+        try {
+          entryMood = await classifyMood(text);
+        } catch (err) {
+          console.error('Mood classification error:', err);
+          setError('AI service unavailable; saved without mood');
+        }
+      }
 
-    // Navigate back to dashboard
-    navigation.goBack();
+      // Save entry to the store
+      addEntry({
+        type: 'text',
+        content: text,
+        tags: selectedTags,
+        mood: entryMood,
+      });
+
+      // Navigate back to dashboard
+      navigation.goBack();
+    } catch (err) {
+      setError('Error saving entry: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsClassifying(false);
+    }
   };
 
   const renderMoodPicker = () => {
@@ -53,7 +74,7 @@ const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
 
     return (
       <View style={styles.moodContainer}>
-        <PaperText variant="bodyMedium" style={{ marginBottom: 8 }}>How are you feeling?</PaperText>
+        <PaperText variant="bodyMedium" style={{ marginBottom: 8 }}>How are you feeling? (Optional - AI will detect if not set)</PaperText>
         <View style={styles.moodIcons}>
           {moods.map((item) => (
             <IconButton
@@ -75,7 +96,11 @@ const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
       <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="New Text Entry" />
-        <Appbar.Action icon="check" onPress={handleSave} />
+        {isClassifying ? (
+          <ActivityIndicator size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+        ) : (
+          <Appbar.Action icon="check" onPress={handleSave} />
+        )}
       </Appbar.Header>
 
       <ScrollView style={styles.content}>
@@ -124,6 +149,17 @@ const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
           </ScrollView>
         </View>
       </ScrollView>
+
+      <Snackbar
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setError(null),
+        }}
+      >
+        {error}
+      </Snackbar>
     </View>
   );
 };

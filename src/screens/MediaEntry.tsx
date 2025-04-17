@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
-import { Appbar, Button, TextInput, useTheme, Text } from 'react-native-paper';
+import { Appbar, Button, TextInput, useTheme, Text, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import * as ImagePicker from 'expo-image-picker';
+import { useJournalStore } from '../store/useJournalStore';
+import { classifyMood } from '../api/openai';
 
 type MediaEntryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'MediaEntry'>;
@@ -18,8 +20,11 @@ const mockImages = [
 
 const MediaEntryScreen: React.FC<MediaEntryScreenProps> = ({ navigation }) => {
   const theme = useTheme();
+  const addEntry = useJournalStore(state => state.addEntry);
   const [selectedImages, setSelectedImages] = useState<any[]>(mockImages);
   const [caption, setCaption] = useState('');
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const pickImage = async () => {
     // No permissions request is necessary for launching the image library
@@ -36,10 +41,40 @@ const MediaEntryScreen: React.FC<MediaEntryScreenProps> = ({ navigation }) => {
     }
   };
 
-  const handleSave = () => {
-    // In a real app, we would save to the store
-    // For now, just navigate back
-    navigation.goBack();
+  const handleSave = async () => {
+    if (!caption.trim() || selectedImages.length === 0) {
+      setError('Please add an image and caption');
+      return;
+    }
+
+    try {
+      setIsClassifying(true);
+      
+      // Classify the mood based on the caption
+      let mood: number | undefined = undefined;
+      try {
+        mood = await classifyMood(caption);
+      } catch (err) {
+        console.error('Mood classification error:', err);
+        setError('AI service unavailable; saved without mood');
+      }
+      
+      // Save entry to the store
+      addEntry({
+        type: 'media',
+        content: caption,
+        uri: selectedImages[0].uri,
+        tags: [],
+        mood,
+      });
+      
+      // Navigate back to dashboard
+      navigation.goBack();
+    } catch (err) {
+      setError('Error saving entry: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setIsClassifying(false);
+    }
   };
 
   return (
@@ -47,7 +82,11 @@ const MediaEntryScreen: React.FC<MediaEntryScreenProps> = ({ navigation }) => {
       <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="Media Entry" />
-        <Appbar.Action icon="check" onPress={handleSave} />
+        {isClassifying ? (
+          <ActivityIndicator size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+        ) : (
+          <Appbar.Action icon="check" onPress={handleSave} />
+        )}
       </Appbar.Header>
 
       <ScrollView style={styles.content}>
@@ -90,6 +129,17 @@ const MediaEntryScreen: React.FC<MediaEntryScreenProps> = ({ navigation }) => {
           style={styles.captionInput}
         />
       </ScrollView>
+      
+      <Snackbar
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setError(null),
+        }}
+      >
+        {error}
+      </Snackbar>
     </View>
   );
 };

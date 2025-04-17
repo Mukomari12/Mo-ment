@@ -17,18 +17,30 @@ const PADDING = { top: 20, right: 10, bottom: 30, left: 40 };
 
 const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
   const theme = useTheme();
-  const moods = useJournalStore(state => state.moods);
+  const entries = useJournalStore(state => state.entries);
   const [timeframe, setTimeframe] = useState('week');
-  const [moodData, setMoodData] = useState(moods);
+  const [moodData, setMoodData] = useState<{date: string, score: number}[]>([]);
 
   useEffect(() => {
-    // Filter data based on selected timeframe
+    // Get real mood data from entries
+    const moods = entries
+      .filter(entry => entry.mood !== undefined)
+      .map(entry => ({
+        date: new Date(entry.createdAt).toISOString().split('T')[0],
+        score: entry.mood as number
+      }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Filter based on selected timeframe
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
     if (timeframe === 'week') {
-      setMoodData(moods.slice(0, 7));
+      setMoodData(moods.filter(m => new Date(m.date) >= weekAgo));
     } else {
-      setMoodData(moods);
+      setMoodData(moods.slice(0, 30)); // Last 30 entries at most
     }
-  }, [timeframe, moods]);
+  }, [timeframe, entries]);
 
   const renderAreaChart = () => {
     if (!moodData.length) return null;

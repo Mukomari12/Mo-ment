@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Appbar, FAB, Text, useTheme } from 'react-native-paper';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, ScrollView } from 'react-native';
+import { Appbar, FAB, Text, useTheme, ActivityIndicator, Snackbar, Chip } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import WaveRecorder from '../components/WaveRecorder';
+import { Audio } from 'expo-av';
+import { useJournalStore } from '../store/useJournalStore';
+import { transcribe, classifyMood } from '../api/openai';
 
 type VoiceEntryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'VoiceEntry'>;
@@ -11,40 +14,139 @@ type VoiceEntryScreenProps = {
 
 const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
   const theme = useTheme();
-  const [recording, setRecording] = useState(false);
+  const addEntry = useJournalStore(state => state.addEntry);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [transcription, setTranscription] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [mood, setMood] = useState<number | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Mock available tags
+  const availableTags = ['Work', 'Personal', 'Family', 'Travel', 'Health', 'Ideas'];
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag) 
+        : [...prev, tag]
+    );
+  };
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-    
-    if (recording) {
-      interval = setInterval(() => {
+    // Request permissions
+    Audio.requestPermissionsAsync();
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      if (recording) {
+        stopRecording();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isRecording) {
+      timerRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
-    } else if (!recording && recordingTime !== 0) {
-      // If we just stopped recording
-      if (recordingTime > 3) {
-        // Fake some transcription for the demo
-        setTranscription("This is a simulated voice transcription for the Mowment app demo. The real app would use a speech-to-text API to convert your voice recording into text.");
-      }
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     };
-  }, [recording, recordingTime]);
+  }, [isRecording]);
 
-  const toggleRecording = () => {
-    setRecording(prev => !prev);
-    
-    if (recording) {
-      // Stop recording
-      // In a real app, we would process the audio here
-    } else {
-      // Start recording
+  const startRecording = async () => {
+    try {
       setRecordingTime(0);
       setTranscription('');
+      setMood(undefined);
+      
+      const { status } = await Audio.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Permission to access microphone was denied');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const newRecording = new Audio.Recording();
+      await newRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await newRecording.startAsync();
+      
+      setRecording(newRecording);
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      setError('Failed to start recording: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+
+    try {
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      
+      // Begin transcribing the audio
+      const uri = recording.getURI();
+      if (uri) {
+        processRecording(uri);
+      } else {
+        setError('No recording was found');
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+      setError('Failed to stop recording: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const processRecording = async (uri: string) => {
+    try {
+      setIsTranscribing(true);
+      
+      // Transcribe the audio using OpenAI's Whisper API
+      const text = await transcribe(uri);
+      setTranscription(text);
+      
+      // Classify the mood based on the transcription
+      if (text) {
+        const detectedMood = await classifyMood(text);
+        setMood(detectedMood);
+      }
+    } catch (err) {
+      console.error('Transcription error:', err);
+      setError('AI service unavailable; saved without transcription/mood');
+      // Set some placeholder text to allow saving anyway
+      setTranscription('Voice memo (transcription failed)');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
     }
   };
 
@@ -55,9 +157,21 @@ const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
   };
 
   const handleSave = () => {
-    // In a real app, we would save to the store
-    // For now, just navigate back
-    navigation.goBack();
+    try {
+      // Save to the journal store
+      addEntry({
+        type: 'voice',
+        content: transcription,
+        tags: selectedTags,
+        mood,
+        uri: recording?.getURI() || undefined,
+      });
+      
+      // Navigate back to dashboard
+      navigation.goBack();
+    } catch (err) {
+      setError('Failed to save entry: ' + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   return (
@@ -65,15 +179,22 @@ const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
       <Appbar.Header>
         <Appbar.BackAction onPress={() => navigation.goBack()} />
         <Appbar.Content title="Voice Entry" />
-        {transcription ? (
-          <Appbar.Action icon="check" onPress={handleSave} />
-        ) : null}
+        {transcription && !isTranscribing && (
+          <Appbar.Action icon="check" onPress={handleSave} disabled={isTranscribing} />
+        )}
       </Appbar.Header>
 
-      <View style={styles.contentContainer}>
-        {recording && (
+      <ScrollView style={styles.contentContainer}>
+        {isRecording && (
           <View style={styles.waveContainer}>
             <WaveRecorder />
+          </View>
+        )}
+        
+        {isTranscribing && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Transcribing your audio...</Text>
           </View>
         )}
         
@@ -81,11 +202,49 @@ const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
           <View style={styles.transcriptionContainer}>
             <Text variant="titleLarge" style={styles.transcriptionTitle}>Transcription</Text>
             <Text style={styles.transcriptionText}>{transcription}</Text>
+            
+            {mood && (
+              <View style={styles.moodContainer}>
+                <Text variant="labelLarge">Detected Mood: {mood}/5</Text>
+                <View style={styles.moodIcons}>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <View
+                      key={value}
+                      style={[
+                        styles.moodIcon,
+                        { 
+                          backgroundColor: value === mood 
+                            ? theme.colors.primary
+                            : theme.colors.surfaceVariant,
+                          opacity: value === mood ? 1 : 0.5
+                        }
+                      ]}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+            
+            <View style={styles.tagsContainer}>
+              <Text variant="labelLarge" style={{ marginBottom: 8 }}>Tags</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {availableTags.map(tag => (
+                  <Chip 
+                    key={tag}
+                    selected={selectedTags.includes(tag)}
+                    onPress={() => toggleTag(tag)} 
+                    style={styles.chip}
+                  >
+                    {tag}
+                  </Chip>
+                ))}
+              </ScrollView>
+            </View>
           </View>
         ) : (
           <View style={styles.instructionsContainer}>
             <Text variant="bodyLarge" style={styles.instructionText}>
-              {recording 
+              {isRecording 
                 ? "Speak clearly..." 
                 : "Tap the microphone button to start recording"}
             </Text>
@@ -93,23 +252,34 @@ const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
         )}
         
         <View style={styles.timerContainer}>
-          {recording && (
+          {isRecording && (
             <Text variant="headlineLarge" style={{ color: theme.colors.error }}>
               {formatTime(recordingTime)}
             </Text>
           )}
         </View>
-      </View>
+      </ScrollView>
 
       <FAB
-        icon={recording ? "stop" : "microphone"}
+        icon={isRecording ? "stop" : "microphone"}
         style={[
           styles.fab, 
-          { backgroundColor: recording ? theme.colors.error : theme.colors.primary }
+          { backgroundColor: isRecording ? theme.colors.error : theme.colors.primary }
         ]}
         onPress={toggleRecording}
-        animated={true}
+        disabled={isTranscribing}
       />
+      
+      <Snackbar
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setError(null),
+        }}
+      >
+        {error}
+      </Snackbar>
     </View>
   );
 };
@@ -120,7 +290,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
-    justifyContent: 'space-between',
     padding: 20,
   },
   waveContainer: {
@@ -142,19 +311,50 @@ const styles = StyleSheet.create({
   },
   transcriptionContainer: {
     flex: 1,
-    padding: 20,
+    padding: 16,
   },
   transcriptionTitle: {
-    marginBottom: 10,
+    marginBottom: 16,
   },
   transcriptionText: {
     lineHeight: 24,
+    marginBottom: 24,
   },
   fab: {
     position: 'absolute',
     margin: 16,
     right: 0,
     bottom: 0,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  moodContainer: {
+    marginBottom: 24,
+  },
+  moodIcons: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  moodIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    marginRight: 8,
+  },
+  tagsContainer: {
+    marginTop: 16,
+  },
+  chip: {
+    marginRight: 8,
+    marginVertical: 4,
   },
 });
 
