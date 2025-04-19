@@ -15,7 +15,7 @@ const PaperSheet: React.FC<PaperSheetProps> = ({ children, style }) => {
       <ImageBackground
         source={require('../../assets/branding/paper_texture.png')}
         style={styles.background}
-        imageStyle={{ opacity: 0.09 }}
+        imageStyle={{ opacity: 0.06 }}
         resizeMode="cover"
       >
         {children}

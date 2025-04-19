@@ -12,6 +12,7 @@ import RemindersScreen from '../screens/Reminders';
 import SettingsScreen from '../screens/Settings';
 import JournalListScreen from '../screens/JournalList';
 import EntryDetailScreen from '../screens/EntryDetail';
+import MonthlyCheckupScreen from '../screens/MonthlyCheckup';
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   Settings: undefined;
   JournalList: undefined;
   EntryDetail: { id: string };
+  MonthlyCheckup: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -52,6 +54,7 @@ const AppNavigator = () => {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="JournalList" component={JournalListScreen} />
       <Stack.Screen name="EntryDetail" component={EntryDetailScreen} />
+      <Stack.Screen name="MonthlyCheckup" component={MonthlyCheckupScreen} />
     </Stack.Navigator>
   );
 };

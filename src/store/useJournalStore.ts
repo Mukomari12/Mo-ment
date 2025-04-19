@@ -1,4 +1,10 @@
 import { create } from 'zustand';
+import { MonthlyReport } from '../api/openai';
+
+export type Emotion = {
+  label: string;
+  emoji: string;
+};
 
 export type Entry = {
   id: string;
@@ -6,6 +12,7 @@ export type Entry = {
   content: string;      // text or caption
   uri?: string;         // media local URI
   mood?: number;        // 1-5
+  emotion?: Emotion;    // classified emotion
   tags: string[];
   createdAt: number;
 };
@@ -28,6 +35,8 @@ interface JournalState {
   setSettings: (p: Partial<JournalState['settings']>) => void;
   eras: Era[];
   setEras: (e: Era[]) => void;
+  monthlyReport: MonthlyReport | null;
+  setMonthlyReport: (r: MonthlyReport) => void;
 }
 
 // Mock data for entries
@@ -37,6 +46,7 @@ const mockEntries: Entry[] = [
     type: 'text',
     content: 'Today I took some time to think about my goals for the next few months. I want to focus more on building healthy habits and spending quality time with friends.',
     mood: 4,
+    emotion: { label: 'motivated', emoji: '💪' },
     tags: ['Personal', 'Goals'],
     createdAt: Date.now() - 1000 * 60 * 60 * 2, // 2 hours ago
   },
@@ -45,6 +55,7 @@ const mockEntries: Entry[] = [
     type: 'voice',
     content: 'Voice note about some project ideas I had while walking in the park.',
     mood: 5,
+    emotion: { label: 'inspired', emoji: '💡' },
     tags: ['Ideas', 'Work'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
   },
@@ -54,6 +65,7 @@ const mockEntries: Entry[] = [
     content: 'Beautiful sunset at the beach today. The colors were amazing!',
     uri: 'https://picsum.photos/300/200',
     mood: 5,
+    emotion: { label: 'peaceful', emoji: '😌' },
     tags: ['Travel', 'Nature'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2, // 2 days ago
   },
@@ -62,6 +74,7 @@ const mockEntries: Entry[] = [
     type: 'text',
     content: 'Feeling a bit stressed about the upcoming presentation. Need to prepare more slides and practice my delivery.',
     mood: 2,
+    emotion: { label: 'anxious', emoji: '😰' },
     tags: ['Work', 'Stress'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 4, // 4 days ago
   },
@@ -70,6 +83,7 @@ const mockEntries: Entry[] = [
     type: 'text',
     content: 'Had a great lunch with Sarah today. We talked about our travel plans for next summer. Thinking about visiting Italy or Greece.',
     mood: 4,
+    emotion: { label: 'excited', emoji: '😄' },
     tags: ['Friends', 'Travel'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 6, // 6 days ago
   },
@@ -103,6 +117,23 @@ const generateMockMoods = () => {
   return moods;
 };
 
+// Mock monthly report
+const currentMonth = new Date().toISOString().substring(0, 7); // YYYY-MM
+const mockMonthlyReport: MonthlyReport = {
+  month: currentMonth,
+  topTriggers: [
+    {
+      emotion: 'anxious',
+      phrases: ['upcoming presentation', 'deadlines', 'work pressure']
+    },
+    {
+      emotion: 'happy',
+      phrases: ['spending time with friends', 'travel plans', 'personal goals']
+    }
+  ],
+  summary: 'This month showed a mix of work-related stress and enjoyable social activities. While work deadlines created anxiety, focusing on future travel and connecting with friends provided balance and positive energy.'
+};
+
 export const useJournalStore = create<JournalState>((set) => ({
   entries: mockEntries,
   addEntry: (entry) => set((state) => ({
@@ -130,5 +161,9 @@ export const useJournalStore = create<JournalState>((set) => ({
   eras: [],
   setEras: (newEras) => set(() => ({
     eras: newEras,
+  })),
+  monthlyReport: mockMonthlyReport,
+  setMonthlyReport: (newReport) => set(() => ({
+    monthlyReport: newReport,
   })),
 })); 

@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, FlatList, SafeAreaView } from 'react-native';
+import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { 
   FAB, 
   Card, 
   Text, 
-  List, 
-  Avatar, 
   Portal, 
   Dialog, 
   Button,
   useTheme,
   Snackbar,
+  IconButton,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -19,9 +18,11 @@ import { useJournalStore, Entry } from '../store/useJournalStore';
 import { format, formatDistanceToNow } from 'date-fns';
 import PaperSheet from '../components/PaperSheet';
 import EmptyState from '../components/EmptyState';
+import EntryCard from '../components/EntryCard';
 import { useSpacing } from '../utils/useSpacing';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useEras } from '../hooks/useEras';
+import * as Haptics from 'expo-haptics';
 
 type DashboardScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
@@ -42,64 +43,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     }
   }, [erasError]);
 
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    
-    // If it's today or yesterday, show relative time
-    if (date.toDateString() === now.toDateString() || 
-        date.toDateString() === new Date(now.setDate(now.getDate() - 1)).toDateString()) {
-      return formatDistanceToNow(date, { addSuffix: true });
-    }
-    
-    // Otherwise, show formatted date
-    return format(date, 'MMM d, yyyy');
-  };
-
-  const getEntryPreview = (entry: Entry) => {
-    switch (entry.type) {
-      case 'text':
-        return entry.content.length > 50 
-          ? `${entry.content.substring(0, 50)}...` 
-          : entry.content;
-      case 'voice':
-        return 'Voice memo';
-      case 'media':
-        return 'Photo with caption';
-      default:
-        return '';
-    }
-  };
-
-  const renderEntryIcon = (type: string) => {
-    switch (type) {
-      case 'text':
-        return <List.Icon icon="notebook-outline" color={theme.colors.primary} />;
-      case 'voice':
-        return <List.Icon icon="microphone-outline" color={theme.colors.primary} />;
-      case 'media':
-        return <List.Icon icon="image-outline" color={theme.colors.primary} />;
-      default:
-        return <List.Icon icon="notebook-outline" color={theme.colors.primary} />;
-    }
-  };
-
-  const renderMoodIndicator = (mood: number | undefined) => {
-    if (!mood) return null;
-    
-    const moodIcons = ['emoticon-sad-outline', 'emoticon-neutral-outline', 'emoticon-happy-outline', 'emoticon-excited-outline', 'emoticon-cool-outline'];
-    return (
-      <Avatar.Icon 
-        size={24} 
-        icon={moodIcons[mood - 1] || moodIcons[2]} 
-        style={{ backgroundColor: theme.colors.surfaceVariant }} 
-        color={theme.colors.primary}
-      />
-    );
-  };
-
   const handleNewEntry = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEntryDialogVisible(true);
+  };
+
+  const handleEntryPress = (entry: Entry) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('EntryDetail', { id: entry.id });
+  };
+
+  const handleMonthlyCheckup = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('MonthlyCheckup');
   };
 
   if (entries.length === 0) {
@@ -111,11 +67,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
           <EmptyState onPress={handleNewEntry} />
           <FAB
-            icon="plus"
+            icon="plus-box-outline"
             style={[styles.fab, { backgroundColor: theme.colors.primary, right: hPad }]}
             onPress={handleNewEntry}
             color={theme.colors.onPrimary}
-            elevation={2}
+            elevation={4}
           />
         </SafeAreaView>
       </PaperSheet>
@@ -127,49 +83,70 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <SafeAreaView style={styles.container}>
         <View style={[styles.header, { paddingHorizontal: hPad }]}>
           <Text variant="titleLarge" style={styles.title}>Journal</Text>
+          <IconButton
+            icon="calendar-heart"
+            size={24}
+            iconColor={theme.colors.primary}
+            onPress={handleMonthlyCheckup}
+          />
         </View>
         
         <ScrollView style={styles.content} contentContainerStyle={[styles.scrollContent, { paddingHorizontal: hPad }]}>
           <Text variant="titleMedium" style={styles.sectionTitle}>Recent Entries</Text>
           
-          <Card style={[styles.entriesCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 0 }]}>
-            <FlatList
-              data={entries.slice(0, 3)}
-              keyExtractor={(item) => item.id}
-              scrollEnabled={false}
-              renderItem={({ item }) => (
-                <List.Item
-                  title={item.content.split('\n')[0]}
-                  description={getEntryPreview(item)}
-                  left={() => renderEntryIcon(item.type)}
-                  right={() => (
-                    <View style={styles.entryMeta}>
-                      <Text variant="bodySmall">{formatDate(item.createdAt)}</Text>
-                      {renderMoodIndicator(item.mood)}
-                    </View>
-                  )}
-                  style={styles.entryItem}
-                  onPress={() => navigation.navigate('EntryDetail', { id: item.id })}
-                />
-              )}
-              ItemSeparatorComponent={() => <View style={styles.separator} />}
-            />
-            <Button 
-              mode="text" 
-              onPress={() => navigation.navigate('JournalList')}
-              style={{ marginVertical: 8 }}
-              labelStyle={{ fontFamily: 'PTSerif-Bold' }}
-            >
-              See All Entries
-            </Button>
-          </Card>
+          {/* Masonry-style 2-column grid of entries */}
+          <View style={styles.entriesGrid}>
+            <View style={styles.entriesColumn}>
+              {entries
+                .slice(0, 6)
+                .filter((_, i) => i % 2 === 0)
+                .map(entry => (
+                  <EntryCard 
+                    key={entry.id} 
+                    entry={entry} 
+                    onPress={handleEntryPress}
+                    style={styles.entryCard}
+                  />
+                ))
+              }
+            </View>
+            <View style={styles.entriesColumn}>
+              {entries
+                .slice(0, 6)
+                .filter((_, i) => i % 2 === 1)
+                .map(entry => (
+                  <EntryCard 
+                    key={entry.id} 
+                    entry={entry} 
+                    onPress={handleEntryPress}
+                    style={styles.entryCard}
+                  />
+                ))
+              }
+            </View>
+          </View>
+          
+          <Button 
+            mode="text" 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('JournalList');
+            }}
+            style={{ marginVertical: 8 }}
+            labelStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+          >
+            See All Entries
+          </Button>
           
           <Text variant="titleMedium" style={[styles.sectionTitle, { marginTop: 24 }]}>Analytics</Text>
           
           <View style={styles.analyticsRow}>
             <Card 
-              style={[styles.analyticsCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 0 }]} 
-              onPress={() => navigation.navigate('MoodGraphs')}
+              style={[styles.analyticsCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 4, shadowColor: theme.colors.secondary + '26' }]} 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate('MoodGraphs');
+              }}
             >
               <Card.Content>
                 <MaterialCommunityIcons name="chart-line" size={24} color={theme.colors.primary} />
@@ -179,8 +156,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             </Card>
             
             <Card 
-              style={[styles.analyticsCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 0 }]} 
-              onPress={() => navigation.navigate('Timeline')}
+              style={[styles.analyticsCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 4, shadowColor: theme.colors.secondary + '26' }]} 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate('Timeline');
+              }}
             >
               <Card.Content>
                 <MaterialCommunityIcons name="timeline-outline" size={24} color={theme.colors.primary} />
@@ -191,8 +171,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
           
           <Card 
-            style={[styles.calendarCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 0 }]} 
-            onPress={() => navigation.navigate('MoodCalendar')}
+            style={[styles.calendarCard, { backgroundColor: theme.colors.surfaceVariant, borderRadius: 16, elevation: 4, shadowColor: theme.colors.secondary + '26' }]} 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.navigate('MoodCalendar');
+            }}
           >
             <Card.Content>
               <MaterialCommunityIcons name="calendar-month" size={24} color={theme.colors.primary} />
@@ -203,29 +186,32 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         </ScrollView>
         
         <FAB
-          icon="plus"
+          icon="plus-box-outline"
           style={[styles.fab, { backgroundColor: theme.colors.primary, right: hPad }]}
-          onPress={() => setEntryDialogVisible(true)}
+          onPress={handleNewEntry}
           color={theme.colors.onPrimary}
-          elevation={2}
+          elevation={4}
         />
         
         <Portal>
           <Dialog visible={entryDialogVisible} onDismiss={() => setEntryDialogVisible(false)}>
-            <Dialog.Title>New Entry</Dialog.Title>
+            <Dialog.Title style={{ fontFamily: 'PlayfairDisplay_700Bold' }}>New Entry</Dialog.Title>
             <Dialog.Content>
-              <Text variant="bodyMedium">Choose the type of entry you want to create:</Text>
+              <Text variant="bodyMedium" style={{ fontFamily: 'WorkSans_400Regular' }}>Choose the type of entry you want to create:</Text>
             </Dialog.Content>
             <Dialog.Actions>
               <Button onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setEntryDialogVisible(false);
                 navigation.navigate('TextEntry');
               }}>Text</Button>
               <Button onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setEntryDialogVisible(false);
                 navigation.navigate('VoiceEntry');
               }}>Voice</Button>
               <Button onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setEntryDialogVisible(false);
                 navigation.navigate('MediaEntry');
               }}>Media</Button>
@@ -255,10 +241,14 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 60,
     paddingBottom: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   title: {
     fontWeight: 'bold',
     fontSize: RFValue(24),
+    fontFamily: 'PlayfairDisplay_700Bold',
   },
   content: {
     flex: 1,
@@ -270,23 +260,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     marginLeft: 8,
     fontSize: RFValue(18),
+    fontFamily: 'PlayfairDisplay_700Bold',
   },
-  entriesCard: {
-    marginBottom: 8,
-  },
-  entryItem: {
-    paddingVertical: 8,
-  },
-  separator: {
-    height: 1,
-    opacity: 0.2,
-    marginHorizontal: 16,
-  },
-  entryMeta: {
-    alignItems: 'flex-end',
+  entriesGrid: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    height: '100%',
-    paddingVertical: 8,
+  },
+  entriesColumn: {
+    width: '48%',
+  },
+  entryCard: {
+    marginBottom: 12,
+    width: '100%',
   },
   analyticsRow: {
     flexDirection: 'row',
@@ -303,6 +288,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 4,
     fontSize: RFValue(16),
+    fontFamily: 'PlayfairDisplay_700Bold',
   },
   fab: {
     position: 'absolute',
