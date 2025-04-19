@@ -1,11 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { View, FlatList, StyleSheet, useWindowDimensions, TouchableOpacity, Image, SafeAreaView } from 'react-native';
-import { Text, Button, useTheme } from 'react-native-paper';
+import { View, FlatList, StyleSheet, Dimensions, TouchableOpacity, Image, SafeAreaView } from 'react-native';
+import { Text, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useSpacing } from '../utils/useSpacing';
-import { RFValue } from 'react-native-responsive-fontsize';
-import PaperSheet from '../components/PaperSheet';
+import * as Haptics from 'expo-haptics';
 
 type OnboardingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
@@ -34,11 +32,9 @@ const slides = [
 ];
 
 const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
-  const theme = useTheme();
-  const { width, height } = useWindowDimensions();
-  const { hPad } = useSpacing();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const screenWidth = Dimensions.get('window').width;
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -58,34 +54,23 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
       });
     } else {
       // Last slide, navigate to Dashboard
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       navigation.replace('Dashboard');
     }
   };
 
-  const renderSlide = ({ item }: { item: typeof slides[0] }) => {
-    // Calculate image size while maintaining aspect ratio for 16:9
-    const imageWidth = width * 0.8;
-    const imageHeight = (imageWidth * 9) / 16;
-    
+  const renderSlide = ({ item }: { item: typeof slides[0] }) => {    
     return (
-      <View style={[styles.slide, { width }]}>
-        <View style={styles.imageContainer}>
-          <Image
-            source={item.image}
-            style={[styles.image, { width: imageWidth, height: imageHeight }]}
-            resizeMode="contain"
-          />
-        </View>
-        <Text 
-          variant="titleLarge" 
-          style={[styles.title, { color: theme.colors.onBackground }]}
-        >
+      <View style={[styles.slide, { width: screenWidth }]}>
+        <Image
+          source={item.image}
+          style={styles.image}
+          resizeMode="contain"
+        />
+        <Text style={styles.title}>
           {item.title}
         </Text>
-        <Text 
-          variant="bodyLarge" 
-          style={[styles.description, { color: theme.colors.onBackground, paddingHorizontal: hPad }]}
-        >
+        <Text style={styles.description}>
           {item.description}
         </Text>
       </View>
@@ -102,11 +87,12 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
               styles.dot,
               {
                 backgroundColor: index === currentIndex 
-                  ? theme.colors.primary 
-                  : theme.colors.surfaceVariant,
+                  ? '#b58a65' 
+                  : '#EFEBE6',
               }
             ]}
             onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               flatListRef.current?.scrollToIndex({
                 index,
                 animated: true,
@@ -119,66 +105,66 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
   };
 
   return (
-    <PaperSheet>
-      <SafeAreaView style={styles.safeArea}>
-        <FlatList
-          ref={flatListRef}
-          data={slides}
-          renderItem={renderSlide}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id}
-          onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig}
-        />
-        
-        {renderPaginationDots()}
-        
-        <View style={[styles.buttonContainer, { paddingHorizontal: hPad }]}>
-          <Button 
-            mode="contained" 
-            onPress={goToNextSlide}
-            style={styles.button}
-            contentStyle={styles.buttonContent}
-          >
-            {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
-          </Button>
-        </View>
-      </SafeAreaView>
-    </PaperSheet>
+    <SafeAreaView style={styles.container}>
+      <FlatList
+        ref={flatListRef}
+        data={slides}
+        renderItem={renderSlide}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+      />
+      
+      {renderPaginationDots()}
+      
+      <View style={styles.buttonContainer}>
+        <Button 
+          mode="contained" 
+          onPress={goToNextSlide}
+          style={styles.button}
+          contentStyle={styles.buttonContent}
+          buttonColor="#b58a65"
+          labelStyle={styles.buttonLabel}
+        >
+          {currentIndex === slides.length - 1 ? 'Get Started' : 'Next'}
+        </Button>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
+    backgroundColor: '#F9F6F2',
   },
   slide: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 40,
-  },
-  imageContainer: {
-    marginBottom: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 40,
   },
   image: {
-    borderRadius: 12,
+    width: 280,
+    height: 200,
+    marginBottom: 30,
   },
   title: {
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 16,
-    fontSize: RFValue(22),
+    fontSize: 24,
+    color: '#3d2f28',
   },
   description: {
     textAlign: 'center',
-    maxWidth: '90%',
-    fontSize: RFValue(16),
-    lineHeight: RFValue(24),
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#3d2f28',
+    paddingHorizontal: 10,
   },
   paginationContainer: {
     flexDirection: 'row',
@@ -193,7 +179,8 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     width: '100%',
-    paddingBottom: 40,
+    paddingHorizontal: 40,
+    paddingBottom: 30,
   },
   button: {
     width: '100%',
@@ -201,6 +188,11 @@ const styles = StyleSheet.create({
   },
   buttonContent: {
     height: 56,
+  },
+  buttonLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
   },
 });
 

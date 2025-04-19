@@ -1,4 +1,7 @@
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View, Text } from 'react-native';
+import { createNavigationContainerRef } from '@react-navigation/native';
 import WelcomeScreen from '../screens/Welcome';
 import OnboardingScreen from '../screens/Onboarding';
 import DashboardScreen from '../screens/Dashboard';
@@ -14,7 +17,32 @@ import JournalListScreen from '../screens/JournalList';
 import EntryDetailScreen from '../screens/EntryDetail';
 import MonthlyCheckupScreen from '../screens/MonthlyCheckup';
 
+// Create a navigation ref that can be used outside of the React component tree
+export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+// Navigation helper function for use outside of components
+export function navigate(name: keyof RootStackParamList, params?: any) {
+  if (navigationRef.isReady()) {
+    // @ts-ignore
+    navigationRef.navigate(name, params);
+  } else {
+    console.error('Navigation is not ready');
+  }
+}
+
+// Simple debug screen to test if navigation works
+const DebugScreen = () => {
+  console.log("Debug screen rendering");
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' }}>
+      <Text style={{ fontSize: 24, color: 'red' }}>Debug Screen Visible</Text>
+      <Text style={{ fontSize: 18, marginTop: 20 }}>If you can see this, navigation is working</Text>
+    </View>
+  );
+};
+
 export type RootStackParamList = {
+  Debug: undefined;
   Welcome: undefined;
   Onboarding: undefined;
   Dashboard: undefined;
@@ -34,6 +62,8 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => {
+  console.log("AppNavigator rendering");
+  
   return (
     <Stack.Navigator
       initialRouteName="Welcome"
@@ -41,6 +71,7 @@ const AppNavigator = () => {
         headerShown: false,
       }}
     >
+      <Stack.Screen name="Debug" component={DebugScreen} />
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />

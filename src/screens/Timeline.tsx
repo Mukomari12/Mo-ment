@@ -68,15 +68,17 @@ const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
       >
         <Card.Content>
           <View style={styles.barContainer}>
-            <Animated.View 
-              style={[
-                styles.durationBar,
-                {
-                  width: `${widthPercentage}%`,
-                  backgroundColor: theme.colors.primary,
-                }
-              ]}
-            />
+            <View style={styles.progressBarWrapper}>
+              <View
+                style={[
+                  styles.durationBar,
+                  { 
+                    width: `${widthPercentage}%`,
+                    backgroundColor: theme.colors.primary,
+                  }
+                ]}
+              />
+            </View>
           </View>
           
           <Text 
@@ -216,11 +218,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#eee',
     borderRadius: 3,
     marginBottom: 16,
+  },
+  progressBarWrapper: {
     overflow: 'hidden',
+    borderRadius: 3,
+    height: '100%',
   },
   durationBar: {
     height: '100%',
-    borderRadius: 3,
   },
   emptyContainer: {
     flex: 1,

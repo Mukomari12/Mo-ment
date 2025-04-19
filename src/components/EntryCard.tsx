@@ -2,6 +2,8 @@ import React from 'react';
 import { StyleSheet, View, TouchableOpacity } from 'react-native';
 import { Text, Surface, useTheme } from 'react-native-paper';
 import { format } from 'date-fns';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import EmotionChip from './EmotionChip';
 import { Entry } from '../store/useJournalStore';
 
@@ -9,9 +11,10 @@ type EntryCardProps = {
   entry: Entry;
   onPress: (entry: Entry) => void;
   style?: any;
+  navigation?: NativeStackNavigationProp<RootStackParamList, any>;
 };
 
-const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style }) => {
+const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style, navigation }) => {
   const theme = useTheme();
   
   const formatDate = (timestamp: number) => {
@@ -76,56 +79,58 @@ const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style }) => {
           style
         ]}
       >
-        <View style={styles.header}>
-          <Text
-            style={[
-              styles.date,
-              { 
-                color: theme.colors.secondary,
-                fontFamily: 'PlayfairDisplay_400Regular'
-              }
-            ]}
-          >
-            {formatDate(entry.createdAt)}
-          </Text>
-          
-          {entry.emotion && (
-            <EmotionChip emotion={entry.emotion} size="small" showLabel={false} />
-          )}
-        </View>
-        
-        <View style={styles.content}>
-          <Text
-            style={[
-              styles.preview,
-              { 
-                color: theme.colors.onSurface,
-                fontFamily: 'WorkSans_400Regular'
-              }
-            ]}
-            numberOfLines={4}
-          >
-            {getEntryTypeIcon()} {getPreview(entry.content)}
-          </Text>
-        </View>
-        
-        <View style={styles.footer}>
-          {renderMoodDots()}
-          
-          {entry.tags && entry.tags.length > 0 && (
+        <View style={styles.cardContent}>
+          <View style={styles.header}>
             <Text
               style={[
-                styles.tags,
+                styles.date,
                 { 
-                  color: theme.colors.onSurfaceVariant,
+                  color: theme.colors.secondary,
+                  fontFamily: 'PlayfairDisplay_400Regular'
+                }
+              ]}
+            >
+              {formatDate(entry.createdAt)}
+            </Text>
+            
+            {entry.emotion && (
+              <EmotionChip emotion={entry.emotion} size="small" showLabel={false} />
+            )}
+          </View>
+          
+          <View style={styles.content}>
+            <Text
+              style={[
+                styles.preview,
+                { 
+                  color: theme.colors.onSurface,
                   fontFamily: 'WorkSans_400Regular'
                 }
               ]}
-              numberOfLines={1}
+              numberOfLines={4}
             >
-              {entry.tags.join(' • ')}
+              {getEntryTypeIcon()} {getPreview(entry.content)}
             </Text>
-          )}
+          </View>
+          
+          <View style={styles.footer}>
+            {renderMoodDots()}
+            
+            {entry.tags && entry.tags.length > 0 && (
+              <Text
+                style={[
+                  styles.tags,
+                  { 
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'WorkSans_400Regular'
+                  }
+                ]}
+                numberOfLines={1}
+              >
+                {entry.tags.join(' • ')}
+              </Text>
+            )}
+          </View>
         </View>
       </Surface>
     </TouchableOpacity>
@@ -134,9 +139,10 @@ const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style }) => {
 
 const styles = StyleSheet.create({
   card: {
-    padding: 16,
     margin: 8,
-    overflow: 'hidden',
+  },
+  cardContent: {
+    padding: 16,
   },
   header: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Dimensions, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Dimensions, TouchableOpacity, Text as RNText } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   Text, 
@@ -8,16 +8,7 @@ import {
   Chip,
   Card,
 } from 'react-native-paper';
-import { 
-  VictoryChart, 
-  VictoryArea, 
-  VictoryAxis, 
-  VictoryLine,
-  VictoryVoronoiContainer,
-  VictoryLabel,
-  VictoryTheme
-} from 'victory-native';
-import { Svg, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { Svg } from 'react-native-svg';
 import PaperSheet from '../components/PaperSheet';
 import { useJournalStore } from '../store/useJournalStore';
 import { useSpacing } from '../utils/useSpacing';
@@ -128,108 +119,11 @@ const MoodGraphsScreen = () => {
               
               {moodData.length > 0 ? (
                 <View style={styles.chartContainer}>
-                  <Svg height={220} width={chartWidth}>
-                    <Defs>
-                      <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0%" stopColor={theme.colors.primary} stopOpacity={0.25} />
-                        <Stop offset="100%" stopColor={theme.colors.primary} stopOpacity={0.05} />
-                      </LinearGradient>
-                    </Defs>
-                    <VictoryChart
-                      width={chartWidth}
-                      height={200}
-                      padding={{ top: 10, bottom: 40, left: 50, right: 20 }}
-                      domainPadding={{ y: 10 }}
-                      theme={VictoryTheme.material}
-                      containerComponent={
-                        <VictoryVoronoiContainer
-                          voronoiDimension="x"
-                          labels={({ datum }) => `${formatDate(datum.date)}: ${datum.y}`}
-                          labelComponent={
-                            <VictoryLabel
-                              style={{ 
-                                fill: theme.colors.onSurface, 
-                                fontFamily: 'WorkSans_400Regular' 
-                              }}
-                              dy={-15}
-                              backgroundStyle={{
-                                fill: theme.colors.surfaceVariant,
-                                stroke: theme.colors.primary,
-                                strokeWidth: 1,
-                                rx: 4
-                              }}
-                              backgroundPadding={{ top: 4, bottom: 4, left: 6, right: 6 }}
-                            />
-                          }
-                        />
-                      }
-                    >
-                      <VictoryAxis 
-                        tickFormat={(x) => {
-                          // Only show a few dates to avoid clutter
-                          const date = new Date(x);
-                          const index = moodData.findIndex(d => d.x.getTime() === date.getTime());
-                          
-                          // For 7 days, show every other day
-                          // For 30 days, show every 5 days
-                          const showEvery = timeRange === '7d' ? 2 : 5;
-                          
-                          if (index % showEvery === 0 || index === moodData.length - 1) {
-                            return format(date, 'MMM d');
-                          }
-                          return '';
-                        }}
-                        style={{
-                          tickLabels: { 
-                            fontSize: 10, 
-                            padding: 5,
-                            fontFamily: 'WorkSans_400Regular',
-                            fill: theme.colors.onSurface
-                          },
-                          axis: { stroke: theme.colors.onSurfaceVariant, strokeWidth: 1 }
-                        }}
-                      />
-                      <VictoryAxis 
-                        dependentAxis
-                        domain={[0, 6]}
-                        tickValues={[1, 2, 3, 4, 5]}
-                        style={{
-                          tickLabels: { 
-                            fontSize: 10, 
-                            padding: 5,
-                            fontFamily: 'WorkSans_400Regular',
-                            fill: theme.colors.onSurface
-                          },
-                          axis: { stroke: theme.colors.onSurfaceVariant, strokeWidth: 1 },
-                          grid: { 
-                            stroke: theme.colors.surfaceVariant, 
-                            strokeWidth: 1,
-                            strokeDasharray: '4, 4'
-                          }
-                        }}
-                      />
-                      <VictoryArea 
-                        data={moodData}
-                        interpolation="monotoneX"
-                        style={{
-                          data: { 
-                            fill: "url(#grad)",
-                            strokeWidth: 0
-                          }
-                        }}
-                      />
-                      <VictoryLine 
-                        data={moodData}
-                        interpolation="monotoneX"
-                        style={{
-                          data: { 
-                            stroke: theme.colors.primary,
-                            strokeWidth: 2
-                          }
-                        }}
-                      />
-                    </VictoryChart>
-                  </Svg>
+                  <View style={[styles.placeholderChart, {backgroundColor: theme.colors.surfaceVariant}]}>
+                    <RNText style={{color: theme.colors.onSurface}}>
+                      Chart visualization coming soon
+                    </RNText>
+                  </View>
                 </View>
               ) : (
                 <View style={styles.noDataContainer}>
@@ -331,6 +225,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   chartContainer: {
+    alignItems: 'center',
+  },
+  placeholderChart: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   noDataContainer: {

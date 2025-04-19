@@ -1,11 +1,9 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, Animated, Image, SafeAreaView } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, Image, SafeAreaView, Dimensions } from 'react-native';
 import { Button, Text, useTheme } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import PaperSheet from '../components/PaperSheet';
 import { useSpacing } from '../utils/useSpacing';
-import { RFValue } from 'react-native-responsive-fontsize';
 
 type WelcomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
@@ -14,75 +12,105 @@ type WelcomeScreenProps = {
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
   const theme = useTheme();
   const { hPad } = useSpacing();
-  const fadeAnim = new Animated.Value(0);
+  const { width } = Dimensions.get('window');
 
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1500,
-      useNativeDriver: true,
-    }).start();
-  }, [fadeAnim]);
+  const handleGetStarted = () => {
+    console.log("Get Started button pressed");
+    navigation.navigate('Onboarding');
+  };
 
   return (
-    <PaperSheet>
-      <SafeAreaView style={styles.container}>
-        <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
+    <SafeAreaView style={[styles.container, {backgroundColor: '#F9F6F2'}]}>
+      {/* Main container with fixed positioning for reliable layout */}
+      <View style={styles.content}>
+        {/* Top section with logo and text */}
+        <View style={styles.topSection}>
           <Image 
             source={require('../../assets/branding/logo_1024.png')} 
             style={styles.logo} 
             resizeMode="contain"
           />
-          <Text variant="titleLarge" style={styles.title}>Mowment</Text>
-          <Text variant="bodyMedium" style={[styles.tagline, { color: theme.colors.onBackground }]}>
+          <Text 
+            style={styles.title}
+          >
+            Mowment
+          </Text>
+          <Text 
+            style={styles.tagline}
+          >
             Capture life, one moment at a time
           </Text>
-        </Animated.View>
+        </View>
         
-        <Button 
-          mode="contained" 
-          onPress={() => navigation.navigate('Onboarding')}
-          style={[styles.button, { marginHorizontal: hPad }]}
-          contentStyle={styles.buttonContent}
-          buttonColor={theme.colors.primary}
-        >
-          Get Started
-        </Button>
-      </SafeAreaView>
-    </PaperSheet>
+        {/* Bottom section with button */}
+        <View style={styles.bottomSection}>
+          <Button 
+            mode="contained" 
+            onPress={handleGetStarted}
+            style={styles.button}
+            labelStyle={styles.buttonLabel}
+            contentStyle={styles.buttonContent}
+            buttonColor="#b58a65"
+          >
+            Get Started
+          </Button>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F9F6F2',
+  },
+  content: {
+    flex: 1,
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 24,
-    paddingBottom: 50,
+    padding: 20,
     paddingTop: 100,
+    paddingBottom: 50,
+  },
+  topSection: {
+    alignItems: 'center',
+    width: '100%',
   },
   logo: {
     width: 120,
     height: 120,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   title: {
     fontWeight: 'bold',
+    fontSize: 32,
     marginBottom: 8,
-    fontSize: RFValue(28),
+    color: '#3d2f28',
+    textAlign: 'center',
   },
   tagline: {
+    fontSize: 18,
+    color: '#3d2f28',
     textAlign: 'center',
-    marginBottom: 24,
-    fontSize: RFValue(16),
+  },
+  bottomSection: {
+    width: '100%',
+    paddingHorizontal: 20,
   },
   button: {
     width: '100%',
     borderRadius: 12,
+    marginTop: 20,
+  },
+  buttonLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
   },
   buttonContent: {
     height: 56,
+    width: '100%',
   },
 });
 

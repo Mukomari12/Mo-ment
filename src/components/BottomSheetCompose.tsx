@@ -1,10 +1,10 @@
 import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { useTheme, List } from 'react-native-paper';
-import BottomSheet, { BottomSheetBackdrop } from '@gorhom/bottom-sheet';
+import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import BottomSheet from '@gorhom/bottom-sheet';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { RootStackParamList, navigationRef, navigate } from '../navigation/AppNavigator';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 export type BottomSheetComposeRef = {
@@ -12,16 +12,20 @@ export type BottomSheetComposeRef = {
   close: () => void;
 };
 
-type ComposeNavigationProps = NativeStackNavigationProp<
-  RootStackParamList,
-  'Dashboard'
->;
+type BottomSheetComposeProps = {
+  navigation?: NativeStackNavigationProp<RootStackParamList, any>;
+};
 
-const BottomSheetCompose = forwardRef<BottomSheetComposeRef, {}>((_, ref) => {
-  const theme = useTheme();
+// Define the specific entry screens we'll navigate to
+type EntryScreen = 'TextEntry' | 'VoiceEntry' | 'MediaEntry';
+
+const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeProps>(({ navigation: navigationProp }, ref) => {
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const navigation = useNavigation<ComposeNavigationProps>();
-
+  
+  // Get navigation from props or from hook as fallback
+  const hookNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = navigationProp || hookNavigation;
+  
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
     expand: () => {
@@ -35,44 +39,54 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, {}>((_, ref) => {
   // Snap points
   const snapPoints = useMemo(() => ['35%'], []);
 
-  // Entry options
+  // Entry options with properly typed icon names
   const entryOptions = [
     {
-      icon: 'text-box-outline',
+      icon: 'text-box-outline' as const,
       label: 'Text Entry',
       nav: 'TextEntry' as const,
     },
     {
-      icon: 'microphone',
+      icon: 'microphone' as const,
       label: 'Voice Entry',
       nav: 'VoiceEntry' as const,
     },
     {
-      icon: 'image-outline',
+      icon: 'image-outline' as const,
       label: 'Media Entry',
       nav: 'MediaEntry' as const,
     },
   ];
 
   // Handle option press
-  const handleOptionPress = (screen: 'TextEntry' | 'VoiceEntry' | 'MediaEntry') => {
+  const handleOptionPress = (screen: EntryScreen) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Close the sheet first
     bottomSheetRef.current?.close();
     
-    // Navigate after a slight delay to allow the sheet to close
+    // Try to navigate using the passed navigation prop first
     setTimeout(() => {
-      navigation.navigate(screen);
+      if (navigation) {
+        navigation.navigate(screen);
+      } else {
+        // Fallback to our helper function that uses navigationRef
+        navigate(screen);
+      }
     }, 300);
   };
 
-  // Custom backdrop component
+  // Backdrop component
   const renderBackdrop = useCallback(
     (props: any) => (
-      <BottomSheetBackdrop
+      <View 
         {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
+        style={[
+          props.style,
+          {
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }
+        ]}
       />
     ),
     []
@@ -85,26 +99,27 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, {}>((_, ref) => {
       snapPoints={snapPoints}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      handleIndicatorStyle={{ backgroundColor: theme.colors.onSurfaceVariant }}
-      backgroundStyle={{ backgroundColor: theme.colors.surface }}
+      handleIndicatorStyle={{ backgroundColor: '#6a4e42' }}
+      backgroundStyle={{ backgroundColor: '#fff' }}
     >
       <View style={styles.contentContainer}>
         {entryOptions.map((option) => (
-          <List.Item
+          <TouchableOpacity
             key={option.label}
-            title={option.label}
-            titleStyle={{ fontFamily: 'WorkSans_500Medium' }}
-            left={(props) => (
-              <List.Icon 
-                {...props} 
-                icon={option.icon} 
-                color={theme.colors.primary}
-              />
-            )}
+            style={styles.optionItem}
             onPress={() => handleOptionPress(option.nav)}
-            style={styles.listItem}
-            rippleColor={theme.colors.primary + '20'}
-          />
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons 
+              name={option.icon}
+              size={28} 
+              color="#b58a65"
+              style={styles.optionIcon}
+            />
+            <Text style={styles.optionText}>
+              {option.label}
+            </Text>
+          </TouchableOpacity>
         ))}
       </View>
     </BottomSheet>
@@ -115,9 +130,23 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     paddingTop: 12,
+    paddingHorizontal: 16,
   },
-  listItem: {
-    paddingVertical: 8,
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f9f6f2',
+  },
+  optionIcon: {
+    marginRight: 16,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#3d2f28',
   },
 });
 

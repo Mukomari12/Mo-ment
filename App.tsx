@@ -1,8 +1,10 @@
+import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { Provider as PaperProvider } from 'react-native-paper';
-import AppNavigator from './src/navigation/AppNavigator';
+import AppNavigator, { navigationRef } from './src/navigation/AppNavigator';
 import { theme } from './src/theme/vintageTheme';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { 
   useFonts as usePlayfairDisplay, 
   PlayfairDisplay_400Regular, 
@@ -14,9 +16,11 @@ import {
   WorkSans_500Medium,
   WorkSans_600SemiBold
 } from '@expo-google-fonts/work-sans';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 
 export default function App() {
+  console.log("App component started");
+
   const [playfairLoaded] = usePlayfairDisplay({
     'PlayfairDisplay_400Regular': PlayfairDisplay_400Regular,
     'PlayfairDisplay_700Bold': PlayfairDisplay_700Bold,
@@ -27,6 +31,10 @@ export default function App() {
     'WorkSans_500Medium': WorkSans_500Medium,
     'WorkSans_600SemiBold': WorkSans_600SemiBold,
   });
+
+  useEffect(() => {
+    console.log("Font loading status:", {playfairLoaded, workSansLoaded});
+  }, [playfairLoaded, workSansLoaded]);
 
   const fontsLoaded = playfairLoaded && workSansLoaded;
 
@@ -43,19 +51,35 @@ export default function App() {
   };
 
   if (!fontsLoaded) {
+    console.log("Fonts not loaded, showing loading screen");
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 10, color: theme.colors.onBackground }}>Loading fonts...</Text>
       </View>
     );
   }
 
-  return (
-    <PaperProvider theme={theme}>
-      <StatusBar style="dark" backgroundColor={theme.colors.background} />
-      <NavigationContainer theme={navigationTheme}>
-        <AppNavigator />
-      </NavigationContainer>
-    </PaperProvider>
-  );
+  console.log("Rendering main app with navigation");
+  try {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+          <PaperProvider theme={theme}>
+            <StatusBar style="dark" backgroundColor={theme.colors.background} />
+            <AppNavigator />
+          </PaperProvider>
+        </NavigationContainer>
+      </GestureHandlerRootView>
+    );
+  } catch (error: any) {
+    console.error("Error rendering app:", error);
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <Text style={{ color: 'red', fontSize: 18, textAlign: 'center' }}>
+          Error loading app: {error.message}
+        </Text>
+      </View>
+    );
+  }
 }
