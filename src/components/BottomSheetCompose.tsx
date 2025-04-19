@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
-import BottomSheet from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, navigationRef, navigate } from '../navigation/AppNavigator';
@@ -76,17 +76,15 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
     }, 300);
   };
 
-  // Backdrop component
+  // Backdrop component using the built-in BottomSheetBackdrop
   const renderBackdrop = useCallback(
-    (props: any) => (
-      <View 
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
         {...props}
-        style={[
-          props.style,
-          {
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          }
-        ]}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior="close"
+        opacity={0.4}
       />
     ),
     []

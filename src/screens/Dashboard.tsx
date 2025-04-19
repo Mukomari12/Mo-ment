@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
 import { 
   FAB, 
@@ -61,9 +61,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </Button>
         </View>
         
-        <Portal>
-          <BottomSheetCompose ref={bottomSheetRef} navigation={navigation} />
-        </Portal>
+        {/* BottomSheetCompose is now only rendered once in the main return statement */}
       </SafeAreaView>
     );
   }
@@ -172,6 +170,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         customSize={64}
       />
       
+      {/* Single Portal for BottomSheetCompose, shared across both view states */}
       <Portal>
         <BottomSheetCompose ref={bottomSheetRef} navigation={navigation} />
       </Portal>

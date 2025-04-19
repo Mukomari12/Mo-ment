@@ -110,7 +110,7 @@ const RemindersScreen: React.FC<RemindersScreenProps> = ({ navigation }) => {
                   {formatTime(settings.reminderTime)}
                 </Button>
                 
-                {(showTimePicker || Platform.OS === 'ios') && (
+                {showTimePicker && (
                   <Portal>
                     <View style={[
                       styles.pickerContainer, 
