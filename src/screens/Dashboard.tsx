@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
 import { 
   FAB, 
   Card, 
   Text, 
   Portal, 
-  Dialog, 
-  Button,
   useTheme,
   Snackbar,
   IconButton,
+  Button,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -19,6 +18,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import PaperSheet from '../components/PaperSheet';
 import EmptyState from '../components/EmptyState';
 import EntryCard from '../components/EntryCard';
+import BottomSheetCompose, { BottomSheetComposeRef } from '../components/BottomSheetCompose';
 import { useSpacing } from '../utils/useSpacing';
 import { RFValue } from 'react-native-responsive-fontsize';
 import { useEras } from '../hooks/useEras';
@@ -31,10 +31,12 @@ type DashboardScreenProps = {
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const theme = useTheme();
   const { hPad } = useSpacing();
-  const [entryDialogVisible, setEntryDialogVisible] = useState(false);
   const entries = useJournalStore(state => state.entries);
   const { error: erasError, eras } = useEras();
   const [error, setError] = useState<string | null>(null);
+  
+  // Reference to the bottom sheet
+  const bottomSheetRef = useRef<BottomSheetComposeRef>(null);
 
   // Display error from eras generation if any
   useEffect(() => {
@@ -45,7 +47,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const handleNewEntry = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setEntryDialogVisible(true);
+    bottomSheetRef.current?.expand();
   };
 
   const handleEntryPress = (entry: Entry) => {
@@ -66,13 +68,18 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
             <Text variant="titleLarge" style={styles.title}>Journal</Text>
           </View>
           <EmptyState onPress={handleNewEntry} />
+          
           <FAB
-            icon="plus-box-outline"
-            style={[styles.fab, { backgroundColor: theme.colors.primary, right: hPad }]}
+            icon="plus"
+            style={[styles.fab, { backgroundColor: theme.colors.primary }]}
             onPress={handleNewEntry}
             color={theme.colors.onPrimary}
-            elevation={4}
+            customSize={64}
           />
+          
+          <Portal>
+            <BottomSheetCompose ref={bottomSheetRef} />
+          </Portal>
         </SafeAreaView>
       </PaperSheet>
     );
@@ -186,50 +193,28 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         </ScrollView>
         
         <FAB
-          icon="plus-box-outline"
-          style={[styles.fab, { backgroundColor: theme.colors.primary, right: hPad }]}
+          icon="plus"
+          style={[styles.fab, { backgroundColor: theme.colors.primary }]}
           onPress={handleNewEntry}
           color={theme.colors.onPrimary}
-          elevation={4}
+          customSize={64}
         />
         
         <Portal>
-          <Dialog visible={entryDialogVisible} onDismiss={() => setEntryDialogVisible(false)}>
-            <Dialog.Title style={{ fontFamily: 'PlayfairDisplay_700Bold' }}>New Entry</Dialog.Title>
-            <Dialog.Content>
-              <Text variant="bodyMedium" style={{ fontFamily: 'WorkSans_400Regular' }}>Choose the type of entry you want to create:</Text>
-            </Dialog.Content>
-            <Dialog.Actions>
-              <Button onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEntryDialogVisible(false);
-                navigation.navigate('TextEntry');
-              }}>Text</Button>
-              <Button onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEntryDialogVisible(false);
-                navigation.navigate('VoiceEntry');
-              }}>Voice</Button>
-              <Button onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setEntryDialogVisible(false);
-                navigation.navigate('MediaEntry');
-              }}>Media</Button>
-            </Dialog.Actions>
-          </Dialog>
+          <BottomSheetCompose ref={bottomSheetRef} />
         </Portal>
+        
+        <Snackbar
+          visible={!!error}
+          onDismiss={() => setError(null)}
+          action={{
+            label: 'Dismiss',
+            onPress: () => setError(null),
+          }}
+        >
+          {error}
+        </Snackbar>
       </SafeAreaView>
-
-      <Snackbar
-        visible={!!error}
-        onDismiss={() => setError(null)}
-        action={{
-          label: 'Dismiss',
-          onPress: () => setError(null),
-        }}
-      >
-        {error}
-      </Snackbar>
     </PaperSheet>
   );
 };
@@ -292,8 +277,9 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    margin: 16,
-    bottom: 0,
+    bottom: 32,
+    right: 32,
+    elevation: 5,
   },
 });
 

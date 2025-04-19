@@ -1,225 +1,198 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, FlatList, Dimensions } from 'react-native';
-import { Appbar, Text, Card, useTheme, Button, ActivityIndicator, Snackbar } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useRef } from 'react';
+import { 
+  StyleSheet, 
+  View, 
+  FlatList, 
+  Dimensions, 
+  Animated, 
+  Text as RNText 
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { 
+  Appbar, 
+  Card, 
+  Text, 
+  useTheme 
+} from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useEras } from '../hooks/useEras';
-import { useJournalStore } from '../store/useJournalStore';
+import { useJournalStore, Era } from '../store/useJournalStore';
+import { format, differenceInDays } from 'date-fns';
+import PaperSheet from '../components/PaperSheet';
+import { useSpacing } from '../utils/useSpacing';
+import * as Haptics from 'expo-haptics';
 
 type TimelineScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Timeline'>;
 };
 
-// Default icons to use for eras
-const defaultIcons = [
-  'school',
-  'briefcase',
-  'laptop',
-  'airplane',
-  'home',
-  'heart',
-  'account-group',
-  'book-open-variant',
-] as const;
-
-// Default colors for eras
-const defaultColors = [
-  '#4CAF50', // Green
-  '#2196F3', // Blue
-  '#9C27B0', // Purple
-  '#FF9800', // Orange
-  '#F44336', // Red
-  '#00BCD4', // Cyan
-  '#009688', // Teal
-  '#FFEB3B', // Yellow
-];
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH * 0.75;
-const CARD_MARGIN = 16;
-
 const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
   const theme = useTheme();
-  const { eras, recompute, isComputing, error } = useEras();
-  const entries = useJournalStore(state => state.entries);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-
-  useEffect(() => {
-    if (error) {
-      setSnackbarMessage(error);
-      setSnackbarVisible(true);
-    }
-  }, [error]);
-
-  // Map eras to UI-friendly format
-  const mappedEras = eras.map((era, index) => {
-    // Generate start and end year from ISO dates
-    const startYear = new Date(era.from).getFullYear();
-    const endYear = new Date(era.to).getFullYear();
-    const now = new Date().getFullYear();
-    
-    return {
-      id: index.toString(),
-      title: era.label,
-      startDate: startYear.toString(),
-      endDate: endYear === now ? 'Present' : endYear.toString(),
-      description: `This era spans from ${startYear} to ${endYear === now ? 'now' : endYear}.`,
-      color: defaultColors[index % defaultColors.length],
-      icon: defaultIcons[index % defaultIcons.length],
-    };
-  });
-
-  // Get key events (most recent entry from each era)
-  const keyEvents = eras.flatMap((era, eraIndex) => {
-    const eraStart = new Date(era.from).getTime();
-    const eraEnd = new Date(era.to).getTime();
-    
-    // Filter entries that fall within this era's timeframe
-    const eraEntries = entries.filter(entry => {
-      const entryDate = entry.createdAt;
-      return entryDate >= eraStart && entryDate <= eraEnd;
-    });
-    
-    // Get the most significant entry (one with most content)
-    if (eraEntries.length === 0) return [];
-    
-    const mostSignificant = eraEntries.reduce((prev, current) => 
-      current.content.length > prev.content.length ? current : prev
+  const { hPad } = useSpacing();
+  const eras = useJournalStore((state) => state.eras);
+  
+  // For smooth animations
+  const scrollX = useRef(new Animated.Value(0)).current;
+  
+  // Calculate max duration for proportional visualization
+  const getMaxDuration = () => {
+    if (!eras.length) return 0;
+    return Math.max(
+      ...eras.map(era => 
+        differenceInDays(new Date(era.to), new Date(era.from))
+      )
     );
+  };
+  
+  const maxDuration = getMaxDuration();
+  
+  const renderEraCard = ({ item }: { item: Era }) => {
+    const startDate = new Date(item.from);
+    const endDate = new Date(item.to);
+    const durationDays = differenceInDays(endDate, startDate);
     
-    return {
-      id: `event-${eraIndex}`,
-      title: mostSignificant.content.split('\n')[0] || 'Entry',
-      date: new Date(mostSignificant.createdAt).toLocaleDateString(),
-      description: mostSignificant.content.substring(0, 100) + (mostSignificant.content.length > 100 ? '...' : ''),
-      eraId: eraIndex.toString(),
-    };
-  });
-
-  const renderLifeEra = ({ item }: { item: typeof mappedEras[0] }) => {
-    const matchingEvents = keyEvents.filter(event => event.eraId === item.id);
+    // Calculate width percentage based on duration
+    const widthPercentage = (durationDays / maxDuration) * 100;
     
     return (
-      <Card
+      <Card 
         style={[
-          styles.eraCard,
+          styles.eraCard, 
           { 
-            width: CARD_WIDTH,
-            marginRight: CARD_MARGIN,
+            backgroundColor: theme.colors.surface,
+            borderRadius: theme.roundness,
+            elevation: 4,
+            shadowColor: theme.colors.secondary + '26',
           }
         ]}
       >
-        <View style={[styles.colorBar, { backgroundColor: item.color }]} />
-        <Card.Content style={styles.cardContent}>
-          <View style={styles.cardHeader}>
-            <MaterialCommunityIcons name={item.icon} size={24} color={item.color} />
-            <Text variant="titleLarge" style={styles.eraTitle}>{item.title}</Text>
+        <Card.Content>
+          <View style={styles.barContainer}>
+            <Animated.View 
+              style={[
+                styles.durationBar,
+                {
+                  width: `${widthPercentage}%`,
+                  backgroundColor: theme.colors.primary,
+                }
+              ]}
+            />
           </View>
           
-          <Text variant="labelLarge" style={styles.eraDateRange}>
-            {item.startDate} - {item.endDate}
+          <Text 
+            variant="titleMedium" 
+            style={{ 
+              fontFamily: 'PlayfairDisplay_700Bold',
+              marginBottom: 4,
+            }}
+          >
+            {item.label}
           </Text>
           
-          <Text variant="bodyMedium" style={styles.eraDescription}>
-            {item.description}
+          <Text 
+            variant="bodySmall" 
+            style={{ 
+              fontFamily: 'WorkSans_400Regular',
+              color: theme.colors.onSurfaceVariant,
+            }}
+          >
+            {format(startDate, 'MMM d, yyyy')} - {format(endDate, 'MMM d, yyyy')}
           </Text>
           
-          {matchingEvents.length > 0 && (
-            <View style={styles.eventsSection}>
-              <Text variant="labelLarge" style={styles.eventsSectionTitle}>Key Events</Text>
-              {matchingEvents.map(event => (
-                <View key={event.id} style={styles.eventItem}>
-                  <Text variant="labelMedium" style={{ color: theme.colors.primary }}>
-                    {event.date}
-                  </Text>
-                  <Text variant="bodyMedium">{event.title}</Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    {event.description}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
+          <Text
+            variant="bodyMedium"
+            style={{
+              fontFamily: 'WorkSans_400Regular',
+              marginTop: 16,
+              flexShrink: 1,
+            }}
+            numberOfLines={6}
+          >
+            {`${durationDays} days - ${Math.round(durationDays / 30)} months`}
+          </Text>
         </Card.Content>
       </Card>
     );
   };
-
+  
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => navigation.goBack()} />
-        <Appbar.Content title="Life Timeline" />
-        {isComputing ? (
-          <ActivityIndicator size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
-        ) : (
-          <Appbar.Action icon="refresh" onPress={recompute} />
-        )}
-      </Appbar.Header>
-
-      <View style={styles.content}>
-        <Text variant="titleMedium" style={styles.sectionTitle}>
-          Your Life Eras {eras.length > 0 ? `(${eras.length})` : ''}
-        </Text>
-        
-        <Text variant="bodyMedium" style={styles.description}>
-          {eras.length > 0 
-            ? "Scroll horizontally to explore different periods of your life." 
-            : "Add at least 3 journal entries for AI to generate your life eras."}
-        </Text>
-        
-        {isComputing ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Analyzing your journal entries...</Text>
-          </View>
-        ) : eras.length > 0 ? (
-          <FlatList
-            data={mappedEras}
-            renderItem={renderLifeEra}
-            keyExtractor={item => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
+    <PaperSheet>
+      <SafeAreaView style={styles.container}>
+        <Appbar.Header style={{ backgroundColor: 'transparent' }}>
+          <Appbar.BackAction 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.goBack();
+            }} 
           />
-        ) : entries.length >= 3 ? (
-          <Button 
-            mode="contained" 
-            onPress={recompute}
-            style={styles.generateButton}
-          >
-            Generate Life Eras
-          </Button>
-        ) : (
-          <Card style={styles.emptyCard}>
-            <Card.Content>
-              <MaterialCommunityIcons 
-                name="book-open-page-variant" 
-                size={48} 
-                color={theme.colors.primary}
-                style={{ alignSelf: 'center', marginBottom: 16 }}
-              />
-              <Text style={{ textAlign: 'center' }}>
-                Add at least 3 journal entries first. Then return here to generate your life timeline.
+          <Appbar.Content 
+            title="Life Timeline" 
+            titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+          />
+        </Appbar.Header>
+        
+        <View style={styles.content}>
+          {eras.length > 0 ? (
+            <>
+              <Text 
+                variant="titleSmall" 
+                style={[
+                  styles.subtitle, 
+                  { 
+                    paddingHorizontal: hPad, 
+                    fontFamily: 'PlayfairDisplay_700Bold',
+                    color: theme.colors.onBackground,
+                  }
+                ]}
+              >
+                Your Life Eras
               </Text>
-            </Card.Content>
-          </Card>
-        )}
-      </View>
-      
-      <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        action={{
-          label: 'Dismiss',
-          onPress: () => setSnackbarVisible(false),
-        }}
-      >
-        {snackbarMessage}
-      </Snackbar>
-    </View>
+              
+              <Animated.FlatList
+                data={eras}
+                keyExtractor={(item) => item.from + item.to}
+                renderItem={renderEraCard}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: hPad, paddingVertical: 20 }}
+                decelerationRate="fast"
+                snapToInterval={260} // Card width + margins
+                snapToAlignment="start"
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                  { useNativeDriver: true }
+                )}
+              />
+              
+              <Text 
+                style={[
+                  styles.hint, 
+                  { 
+                    paddingHorizontal: hPad,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'WorkSans_400Regular',
+                  }
+                ]}
+              >
+                Swipe to explore different eras in your life
+              </Text>
+            </>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text 
+                style={{ 
+                  fontFamily: 'WorkSans_400Regular',
+                  textAlign: 'center',
+                  color: theme.colors.onSurfaceVariant,
+                }}
+              >
+                No life eras found. Continue journaling to see your life timeline.
+              </Text>
+            </View>
+          )}
+        </View>
+      </SafeAreaView>
+    </PaperSheet>
   );
 };
 
@@ -229,83 +202,38 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
   },
-  sectionTitle: {
+  subtitle: {
     marginBottom: 8,
-    marginLeft: 8,
-  },
-  description: {
-    marginBottom: 16,
-    marginLeft: 8,
-    opacity: 0.7,
-  },
-  listContent: {
-    paddingRight: 16,
   },
   eraCard: {
-    position: 'relative',
-    overflow: 'hidden',
-    marginVertical: 8,
-    marginLeft: 8,
-    borderRadius: 12,
+    width: 240,
+    marginRight: 20,
+    marginBottom: 10,
   },
-  colorBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    width: 8,
-    height: '100%',
-  },
-  cardContent: {
-    paddingLeft: 16,
-    paddingVertical: 16,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  eraTitle: {
-    marginLeft: 8,
-    fontWeight: 'bold',
-  },
-  eraDateRange: {
-    marginBottom: 12,
-    opacity: 0.7,
-  },
-  eraDescription: {
+  barContainer: {
+    height: 6,
+    backgroundColor: '#eee',
+    borderRadius: 3,
     marginBottom: 16,
-    lineHeight: 20,
+    overflow: 'hidden',
   },
-  eventsSection: {
-    marginTop: 8,
+  durationBar: {
+    height: '100%',
+    borderRadius: 3,
   },
-  eventsSectionTitle: {
-    marginBottom: 8,
-  },
-  eventItem: {
-    marginBottom: 12,
-    paddingLeft: 8,
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(0,0,0,0.1)',
-  },
-  loadingContainer: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 20,
   },
-  loadingText: {
-    marginTop: 16,
+  hint: {
+    fontSize: 14,
     textAlign: 'center',
+    marginTop: 16,
+    opacity: 0.7,
   },
-  generateButton: {
-    marginTop: 24,
-  },
-  emptyCard: {
-    marginTop: 24,
-    padding: 16,
-  }
 });
 
 export default TimelineScreen; 
