@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { StyleSheet, View, ScrollView, Dimensions, SafeAreaView } from 'react-native';
 import { Appbar, Text, useTheme, SegmentedButtons } from 'react-native-paper';
-import { LineChart } from 'react-native-chart-kit';
+import Svg, { Polyline, Line, Rect, Text as SvgText } from 'react-native-svg';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useJournalStore } from '../store/useJournalStore';
@@ -21,7 +21,7 @@ const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
   
   // Filter and prepare mood data for the chart
   const moodData = useMemo(() => {
-    if (!entries.length) return { labels: [], values: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
+    if (!entries.length) return { chartData: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
     
     const now = new Date().getTime();
     const daysInMs = timeRange === '7days' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
@@ -33,24 +33,22 @@ const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
       .sort((a, b) => a.createdAt - b.createdAt);
     
     if (filteredEntries.length === 0) {
-      return { labels: [], values: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
+      return { chartData: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
     }
     
-    // Format dates for labels
-    const labels = filteredEntries.map(entry => {
-      const date = new Date(entry.createdAt);
-      return `${date.getMonth() + 1}/${date.getDate()}`;
-    });
+    // Prepare data for chart
+    const chartData = filteredEntries.map(entry => ({
+      x: new Date(entry.createdAt),
+      y: entry.mood || 0
+    }));
     
-    // Prepare mood values
-    const values = filteredEntries.map(entry => entry.mood || 0);
+    // Calculate stats from the filtered entries
+    const moodValues = filteredEntries.map(entry => entry.mood || 0);
+    const averageMood = Math.round(moodValues.reduce((sum, val) => sum + val, 0) / moodValues.length * 10) / 10;
+    const highestMood = Math.max(...moodValues);
+    const lowestMood = Math.min(...moodValues);
     
-    // Calculate stats
-    const averageMood = Math.round(values.reduce((sum, val) => sum + val, 0) / values.length * 10) / 10;
-    const highestMood = Math.max(...values);
-    const lowestMood = Math.min(...values);
-    
-    return { labels, values, averageMood, highestMood, lowestMood };
+    return { chartData, averageMood, highestMood, lowestMood };
   }, [entries, timeRange]);
   
   const handleTimeRangeChange = (value: string) => {
@@ -85,7 +83,7 @@ const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
   }
   
   // Show a special message if there's no mood data for the selected range
-  if (moodData.labels.length === 0) {
+  if (moodData.chartData.length === 0) {
     return (
       <PaperSheet>
         <SafeAreaView style={styles.container}>
@@ -120,16 +118,46 @@ const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
             />
           </View>
           
-          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+          <View style={styles.blank}>
             <Text variant="bodyMedium">No mood data available for this time period.</Text>
           </View>
         </SafeAreaView>
       </PaperSheet>
     );
   }
+
+  // Chart dimensions
+  const svgWidth = Dimensions.get('window').width - 60;
+  const svgHeight = 220;
+  const padding = { top: 20, right: 20, bottom: 30, left: 30 };
+  const chartWidth = svgWidth - padding.left - padding.right;
+  const chartHeight = svgHeight - padding.top - padding.bottom;
   
-  // Width for the chart (full screen width minus padding)
-  const screenWidth = Dimensions.get('window').width - 40;
+  // Create points for SVG polyline
+  const chartPoints = useMemo(() => {
+    if (moodData.chartData.length === 0) return "";
+    
+    // Find min and max dates for x-axis scaling
+    const dates = moodData.chartData.map(d => d.x.getTime());
+    const minDate = Math.min(...dates);
+    const maxDate = Math.max(...dates);
+    const dateRange = maxDate - minDate || 1; // Avoid division by zero
+    
+    // Map data points to SVG coordinates
+    return moodData.chartData.map(point => {
+      // Scale x position based on date
+      const x = padding.left + ((point.x.getTime() - minDate) / dateRange) * chartWidth;
+      
+      // Scale y position (invert y-axis since SVG 0,0 is top-left)
+      // Map mood 1-5 to chart height
+      const y = svgHeight - padding.bottom - ((point.y - 1) / 4) * chartHeight;
+      
+      return `${x},${y}`;
+    }).join(" ");
+  }, [moodData.chartData, chartWidth, chartHeight, padding]);
+  
+  // Create y-axis labels
+  const yAxisLabels = ['1', '2', '3', '4', '5'];
   
   return (
     <PaperSheet>
@@ -179,42 +207,66 @@ const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
               Mood Trends
             </Text>
             
-            <LineChart
-              data={{
-                labels: moodData.labels,
-                datasets: [
-                  {
-                    data: moodData.values,
-                    color: () => theme.colors.primary,
-                    strokeWidth: 3
-                  }
-                ]
-              }}
-              width={screenWidth}
-              height={220}
-              chartConfig={{
-                backgroundColor: theme.colors.surface,
-                backgroundGradientFrom: theme.colors.surface,
-                backgroundGradientTo: theme.colors.surface,
-                decimalPlaces: 0,
-                color: () => theme.colors.primary,
-                labelColor: () => theme.colors.onSurfaceVariant,
-                propsForDots: {
-                  r: '5',
-                  strokeWidth: '2',
-                  stroke: theme.colors.primary
-                },
-                style: {
-                  borderRadius: 16
-                }
-              }}
-              bezier
-              style={styles.chart}
-              fromZero
-              yAxisSuffix=""
-              yAxisInterval={1}
-              segments={5}
-            />
+            <View style={styles.svgContainer}>
+              <Svg width={svgWidth} height={svgHeight}>
+                {/* Background */}
+                <Rect 
+                  x={padding.left} 
+                  y={padding.top} 
+                  width={chartWidth} 
+                  height={chartHeight} 
+                  fill="#f5f5f5" 
+                  opacity={0.3}
+                />
+                
+                {/* Y-axis grid lines and labels */}
+                {yAxisLabels.map((label, i) => {
+                  const y = svgHeight - padding.bottom - (i / 4) * chartHeight;
+                  return (
+                    <React.Fragment key={i}>
+                      <Line 
+                        x1={padding.left} 
+                        y1={y} 
+                        x2={svgWidth - padding.right} 
+                        y2={y} 
+                        stroke="#ccc" 
+                        strokeWidth="1" 
+                        strokeDasharray="5,5"
+                      />
+                      <SvgText 
+                        x={padding.left - 10} 
+                        y={y + 5} 
+                        fill={theme.colors.onSurfaceVariant} 
+                        fontSize="10" 
+                        textAnchor="end"
+                      >
+                        {label}
+                      </SvgText>
+                    </React.Fragment>
+                  );
+                })}
+                
+                {/* X-axis */}
+                <Line 
+                  x1={padding.left} 
+                  y1={svgHeight - padding.bottom} 
+                  x2={svgWidth - padding.right} 
+                  y2={svgHeight - padding.bottom} 
+                  stroke="#ccc" 
+                  strokeWidth="1"
+                />
+                
+                {/* Data line */}
+                <Polyline
+                  points={chartPoints}
+                  fill="none"
+                  stroke={theme.colors.primary}
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              </Svg>
+            </View>
           </View>
           
           <View style={styles.statsContainer}>
@@ -294,9 +346,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginBottom: 16,
   },
-  chart: {
-    borderRadius: 12,
-    paddingRight: 16,
+  svgContainer: {
+    alignItems: 'center',
+    marginHorizontal: -10,
+  },
+  blank: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   statsContainer: {
     flexDirection: 'row',
