@@ -13,6 +13,8 @@ type VoiceEntryScreenProps = {
 };
 
 const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
+  console.log('VoiceEntry props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
   const addEntry = useJournalStore(state => state.addEntry);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);

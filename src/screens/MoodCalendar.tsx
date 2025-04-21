@@ -31,9 +31,12 @@ type MarkedDates = {
 };
 
 const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) => {
+  console.log('MoodCalendar props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
   const { hPad } = useSpacing();
   const moods = useJournalStore(state => state.moods);
+  const entries = useJournalStore(state => state.entries);
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   
   // Mood color mapping for heatmap (1-5 scale)
@@ -100,6 +103,32 @@ const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) =
     const yearText = !isThisYear(date) ? format(date, ' yyyy') : '';
     return `${monthName}${yearText}`;
   };
+  
+  // Show a fallback if there's no data
+  if (entries.length === 0 || moods.length === 0) {
+    return (
+      <PaperSheet>
+        <SafeAreaView style={styles.container}>
+          <Appbar.Header style={{ backgroundColor: 'transparent' }}>
+            <Appbar.BackAction 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.goBack();
+              }} 
+            />
+            <Appbar.Content 
+              title="Mood Calendar" 
+              titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+            />
+          </Appbar.Header>
+          
+          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+            <Text variant="bodyMedium">Add at least one entry to view analytics.</Text>
+          </View>
+        </SafeAreaView>
+      </PaperSheet>
+    );
+  }
   
   return (
     <PaperSheet>
@@ -281,52 +310,54 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   calendar: {
-    borderRadius: 12,
-    elevation: 2,
+    borderRadius: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  yearCalendar: {
+    height: 280,
   },
   monthContainer: {
     marginBottom: 24,
   },
   monthName: {
-    fontSize: 18,
     marginBottom: 8,
-    marginLeft: 8,
-  },
-  yearCalendar: {
-    borderRadius: 12,
-    elevation: 1,
+    fontSize: 18,
   },
   legendContainer: {
-    paddingVertical: 16,
+    padding: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: '#00000011',
   },
   legendTitle: {
+    marginBottom: 12,
     fontSize: 16,
-    marginBottom: 8,
   },
   legendRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    justifyContent: 'space-around',
   },
   legendItem: {
-    flexDirection: 'row',
     alignItems: 'center',
   },
   colorSquare: {
-    width: 18,
-    height: 18,
+    width: 24,
+    height: 24,
     borderRadius: 4,
-    marginRight: 4,
+    marginBottom: 4,
   },
   legendText: {
-    fontSize: 14,
+    fontSize: 12,
   },
   legendSubtext: {
     fontSize: 12,
     textAlign: 'center',
     marginTop: 4,
+  },
+  fallbackContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
 });
 

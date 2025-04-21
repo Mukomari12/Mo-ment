@@ -36,7 +36,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const handleNavigation = (screen: Extract<keyof RootStackParamList, 'MoodGraphs' | 'Timeline' | 'MoodCalendar' | 'JournalList' | 'MonthlyCheckup'>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log(`Attempting to navigate to ${screen}`);
     navigation.navigate(screen);
+  };
+
+  // Debug function to test navigation directly
+  const debugNavigate = () => {
+    console.log('Debug navigation attempt');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate('Debug');
   };
 
   // For empty state, show simple message with button
@@ -45,20 +53,30 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Journal</Text>
+          <View style={styles.headerActions}>
+            <Button
+              mode="contained"
+              onPress={debugNavigate}
+              style={styles.debugButton}
+              buttonColor="red"
+            >
+              Test Nav
+            </Button>
+            <Button 
+              mode="contained" 
+              onPress={handleNewEntry}
+              style={styles.emptyButton}
+              buttonColor="#b58a65"
+              labelStyle={{color: 'white', fontSize: 16}}
+            >
+              Create First Entry
+            </Button>
+          </View>
         </View>
         
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyTitle}>Welcome to Mowment</Text>
           <Text style={styles.emptyMessage}>Start capturing your moments by creating your first entry</Text>
-          <Button 
-            mode="contained" 
-            onPress={handleNewEntry}
-            style={styles.emptyButton}
-            buttonColor="#b58a65"
-            labelStyle={{color: 'white', fontSize: 16}}
-          >
-            Create First Entry
-          </Button>
         </View>
         
         {/* BottomSheetCompose is now only rendered once in the main return statement */}
@@ -71,13 +89,23 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Journal</Text>
-        <IconButton
-          icon="calendar-heart"
-          size={28}
-          iconColor="#b58a65"
-          onPress={() => handleNavigation('MonthlyCheckup')}
-          style={styles.headerIcon}
-        />
+        <View style={styles.headerActions}>
+          <Button
+            mode="contained"
+            onPress={debugNavigate}
+            style={styles.debugButton}
+            buttonColor="red"
+          >
+            Test Nav
+          </Button>
+          <IconButton
+            icon="calendar-heart"
+            size={28}
+            iconColor="#b58a65"
+            onPress={() => handleNavigation('MonthlyCheckup')}
+            style={styles.headerIcon}
+          />
+        </View>
       </View>
       
       <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
@@ -132,7 +160,16 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         <View style={styles.analyticsRow}>
           <TouchableOpacity 
             style={styles.analyticsCard} 
-            onPress={() => handleNavigation('MoodGraphs')}
+            onPress={() => {
+              console.log('MoodGraphs card pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              try {
+                navigation.navigate('MoodGraphs');
+                console.log('Navigate to MoodGraphs called');
+              } catch (error) {
+                console.error('Navigation error:', error);
+              }
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="chart-line" size={28} color="#b58a65" />
@@ -197,8 +234,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: '#3d2f28',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerIcon: {
     margin: 0,
+  },
+  debugButton: {
+    marginRight: 8,
+    height: 36,
   },
   content: {
     flex: 1,

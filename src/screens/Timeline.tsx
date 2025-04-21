@@ -27,9 +27,12 @@ type TimelineScreenProps = {
 };
 
 const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
+  console.log('Timeline props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
   const { hPad } = useSpacing();
   const eras = useJournalStore((state) => state.eras);
+  const entries = useJournalStore((state) => state.entries);
   
   // For smooth animations
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -116,6 +119,32 @@ const TimelineScreen: React.FC<TimelineScreenProps> = ({ navigation }) => {
       </Card>
     );
   };
+  
+  // Show a fallback if there are no entries or eras
+  if (entries.length === 0 || eras.length === 0) {
+    return (
+      <PaperSheet>
+        <SafeAreaView style={styles.container}>
+          <Appbar.Header style={{ backgroundColor: 'transparent' }}>
+            <Appbar.BackAction 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.goBack();
+              }} 
+            />
+            <Appbar.Content 
+              title="Life Timeline" 
+              titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+            />
+          </Appbar.Header>
+          
+          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+            <Text variant="bodyMedium">Add at least one entry to view analytics.</Text>
+          </View>
+        </SafeAreaView>
+      </PaperSheet>
+    );
+  }
   
   return (
     <PaperSheet>
@@ -232,6 +261,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  fallbackContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   hint: {
     fontSize: 14,

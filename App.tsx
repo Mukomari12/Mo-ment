@@ -64,7 +64,13 @@ export default function App() {
   try {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <NavigationContainer ref={navigationRef} theme={navigationTheme}>
+        <NavigationContainer 
+          ref={navigationRef} 
+          theme={navigationTheme} 
+          onStateChange={(state) => {
+            console.log('Navigation state changed:', JSON.stringify(state));
+          }}
+        >
           <PaperProvider theme={theme}>
             <StatusBar style="dark" backgroundColor={theme.colors.background} />
             <AppNavigator />

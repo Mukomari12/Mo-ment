@@ -1,93 +1,75 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, SectionList, SafeAreaView, View } from 'react-native';
-import { List, Text, Appbar, useTheme } from 'react-native-paper';
+import React from 'react';
+import { View, StyleSheet, FlatList, SafeAreaView } from 'react-native';
+import { Text, Appbar, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useJournalStore, Entry } from '../store/useJournalStore';
+import EntryCard from '../components/EntryCard';
 import PaperSheet from '../components/PaperSheet';
-import { useSpacing } from '../utils/useSpacing';
-import { format } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 
 type JournalListScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'JournalList'>;
 };
 
-const JournalList: React.FC<JournalListScreenProps> = ({ navigation }) => {
-  const theme = useTheme();
-  const { hPad } = useSpacing();
+const JournalListScreen: React.FC<JournalListScreenProps> = ({ navigation }) => {
+  console.log('JournalList props:', { props: { navigation }, routeParams: {} });
+  
   const entries = useJournalStore(state => state.entries);
+
+  const handleEntryPress = (entry: Entry) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('EntryDetail', { id: entry.id });
+  };
   
-  // Group entries by month
-  const groupedEntries = useMemo(() => {
-    const grouped: { title: string; data: Entry[] }[] = [];
-    const months: Record<string, Entry[]> = {};
-    
-    // Sort entries by date (newest first)
-    const sortedEntries = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-    
-    // Group by month
-    sortedEntries.forEach(entry => {
-      const date = new Date(entry.createdAt);
-      const monthKey = format(date, 'MMMM yyyy');
-      
-      if (!months[monthKey]) {
-        months[monthKey] = [];
-      }
-      
-      months[monthKey].push(entry);
-    });
-    
-    // Convert to SectionList format
-    Object.keys(months).forEach(month => {
-      grouped.push({
-        title: month,
-        data: months[month]
-      });
-    });
-    
-    return grouped;
-  }, [entries]);
-  
+  const handleNewEntry = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('TextEntry');
+  };
+
   return (
     <PaperSheet>
       <SafeAreaView style={styles.container}>
         <Appbar.Header style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => navigation.goBack()} />
-          <Appbar.Content title="Journal Entries" titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }} />
+          <Appbar.BackAction 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.goBack();
+            }} 
+          />
+          <Appbar.Content 
+            title="Journal Entries" 
+            titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+          />
         </Appbar.Header>
         
-        <SectionList
-          sections={groupedEntries}
-          keyExtractor={entry => entry.id}
-          renderItem={({ item }) => (
-            <List.Item
-              title={item.content.split('\n')[0] || '(untitled)'}
-              description={format(new Date(item.createdAt), 'MMM d, yyyy')}
-              onPress={() => navigation.navigate('EntryDetail', { id: item.id })}
-              left={() => {
-                let icon = 'notebook-outline';
-                if (item.type === 'voice') icon = 'microphone-outline';
-                if (item.type === 'media') icon = 'image-outline';
-                return <List.Icon icon={icon} color={theme.colors.primary} />;
-              }}
-              right={() => item.emotion && (
-                <Text style={styles.emotionEmoji}>{item.emotion.emoji}</Text>
-              )}
-              titleStyle={styles.entryTitle}
-              descriptionStyle={styles.entryDate}
-            />
-          )}
-          renderSectionHeader={({ section: { title } }) => (
-            <View style={[styles.sectionHeader, { backgroundColor: theme.colors.background }]}>
-              <Text variant="titleMedium" style={styles.sectionTitle}>{title}</Text>
-            </View>
-          )}
-          contentContainerStyle={{ paddingHorizontal: hPad, paddingVertical: 16 }}
-          ItemSeparatorComponent={() => (
-            <View style={{ height: 1, backgroundColor: theme.colors.surfaceVariant }} />
-          )}
-          stickySectionHeadersEnabled={true}
-        />
+        {entries.length === 0 ? (
+          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+            <Text variant="bodyMedium" style={{marginBottom: 20}}>No entries to display yet.</Text>
+            <Button 
+              mode="contained" 
+              onPress={handleNewEntry}
+              buttonColor="#b58a65"
+              style={{borderRadius: 8}}
+            >
+              Create First Entry
+            </Button>
+          </View>
+        ) : (
+          <FlatList
+            data={entries}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <EntryCard 
+                entry={item} 
+                onPress={handleEntryPress}
+                style={styles.entryCard}
+                navigation={navigation}
+              />
+            )}
+            contentContainerStyle={styles.listContent}
+          />
+        )}
       </SafeAreaView>
     </PaperSheet>
   );
@@ -97,25 +79,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  entryTitle: {
-    fontFamily: 'WorkSans_400Regular',
+  listContent: {
+    padding: 16,
   },
-  entryDate: {
-    fontFamily: 'WorkSans_400Regular',
-    fontSize: 12,
+  entryCard: {
+    marginBottom: 12,
   },
-  sectionHeader: {
-    padding: 12,
-    marginVertical: 8,
-    borderRadius: 8,
-  },
-  sectionTitle: {
-    fontFamily: 'PlayfairDisplay_700Bold',
-  },
-  emotionEmoji: {
-    fontSize: 20,
-    marginRight: 8,
-  }
 });
 
-export default JournalList; 
+export default JournalListScreen; 

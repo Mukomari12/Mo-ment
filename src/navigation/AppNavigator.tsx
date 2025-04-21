@@ -69,9 +69,20 @@ const AppNavigator = () => {
       initialRouteName="Welcome"
       screenOptions={{
         headerShown: false,
+        gestureEnabled: true,
+        animation: 'slide_from_right',
+        animationTypeForReplace: 'push',
+        contentStyle: { backgroundColor: '#F9F6F2' },
       }}
     >
-      <Stack.Screen name="Debug" component={DebugScreen} />
+      <Stack.Screen 
+        name="Debug" 
+        component={DebugScreen} 
+        options={{
+          headerShown: true,
+          title: 'Debug Navigation',
+        }}
+      />
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} />

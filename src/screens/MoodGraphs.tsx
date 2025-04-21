@@ -1,206 +1,263 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Dimensions, TouchableOpacity, Text as RNText } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { 
-  Text, 
-  useTheme, 
-  Appbar,
-  Chip,
-  Card,
-} from 'react-native-paper';
-import { Svg } from 'react-native-svg';
-import PaperSheet from '../components/PaperSheet';
+import React, { useState, useMemo } from 'react';
+import { StyleSheet, View, ScrollView, Dimensions, SafeAreaView } from 'react-native';
+import { Appbar, Text, useTheme, SegmentedButtons } from 'react-native-paper';
+import { LineChart } from 'react-native-chart-kit';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import { useJournalStore } from '../store/useJournalStore';
-import { useSpacing } from '../utils/useSpacing';
-import { format, subDays } from 'date-fns';
+import PaperSheet from '../components/PaperSheet';
 import * as Haptics from 'expo-haptics';
 
-const MoodGraphsScreen = () => {
+type MoodGraphsScreenProps = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'MoodGraphs'>;
+};
+
+const MoodGraphsScreen: React.FC<MoodGraphsScreenProps> = ({ navigation }) => {
+  console.log('MoodGraphs props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
-  const { hPad } = useSpacing();
-  const [timeRange, setTimeRange] = useState<'7d' | '30d'>('7d');
-  const moods = useJournalStore(state => state.moods);
+  const entries = useJournalStore(state => state.entries);
+  const [timeRange, setTimeRange] = useState<'7days' | '30days'>('7days');
   
-  const handleRangeChange = (range: '7d' | '30d') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setTimeRange(range);
-  };
-  
-  // Filter data based on selected time range
-  const getMoodData = () => {
-    const now = new Date();
-    const daysAgo = timeRange === '7d' ? 7 : 30;
-    const startDate = subDays(now, daysAgo);
+  // Filter and prepare mood data for the chart
+  const moodData = useMemo(() => {
+    if (!entries.length) return { labels: [], values: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
     
-    return moods
-      .filter(mood => new Date(mood.date) >= startDate)
-      .map(mood => ({
-        x: new Date(mood.date),
-        y: mood.score,
-        date: mood.date
-      }))
-      .sort((a, b) => a.x.getTime() - b.x.getTime());
+    const now = new Date().getTime();
+    const daysInMs = timeRange === '7days' ? 7 * 24 * 60 * 60 * 1000 : 30 * 24 * 60 * 60 * 1000;
+    const cutoffTime = now - daysInMs;
+    
+    // Filter entries by date and only include those with mood data
+    const filteredEntries = entries
+      .filter(entry => entry.createdAt >= cutoffTime && entry.mood !== undefined)
+      .sort((a, b) => a.createdAt - b.createdAt);
+    
+    if (filteredEntries.length === 0) {
+      return { labels: [], values: [], averageMood: 0, highestMood: 0, lowestMood: 0 };
+    }
+    
+    // Format dates for labels
+    const labels = filteredEntries.map(entry => {
+      const date = new Date(entry.createdAt);
+      return `${date.getMonth() + 1}/${date.getDate()}`;
+    });
+    
+    // Prepare mood values
+    const values = filteredEntries.map(entry => entry.mood || 0);
+    
+    // Calculate stats
+    const averageMood = Math.round(values.reduce((sum, val) => sum + val, 0) / values.length * 10) / 10;
+    const highestMood = Math.max(...values);
+    const lowestMood = Math.min(...values);
+    
+    return { labels, values, averageMood, highestMood, lowestMood };
+  }, [entries, timeRange]);
+  
+  const handleTimeRangeChange = (value: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setTimeRange(value as '7days' | '30days');
   };
   
-  const moodData = getMoodData();
-  const screenWidth = Dimensions.get('window').width;
-  const chartWidth = screenWidth - (hPad * 2) - 32; // Account for card padding
+  // Show a fallback if there are no entries
+  if (entries.length === 0) {
+    return (
+      <PaperSheet>
+        <SafeAreaView style={styles.container}>
+          <Appbar.Header style={{ backgroundColor: 'transparent' }}>
+            <Appbar.BackAction 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.goBack();
+              }} 
+            />
+            <Appbar.Content 
+              title="Mood Insights" 
+              titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+            />
+          </Appbar.Header>
+          
+          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+            <Text variant="bodyMedium">Add at least one entry to view analytics.</Text>
+          </View>
+        </SafeAreaView>
+      </PaperSheet>
+    );
+  }
   
-  const formatDate = (date: string) => {
-    return format(new Date(date), 'MMM d');
-  };
+  // Show a special message if there's no mood data for the selected range
+  if (moodData.labels.length === 0) {
+    return (
+      <PaperSheet>
+        <SafeAreaView style={styles.container}>
+          <Appbar.Header style={{ backgroundColor: 'transparent' }}>
+            <Appbar.BackAction 
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.goBack();
+              }} 
+            />
+            <Appbar.Content 
+              title="Mood Insights" 
+              titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
+            />
+          </Appbar.Header>
+          
+          <View style={styles.timeFilterContainer}>
+            <SegmentedButtons
+              value={timeRange}
+              onValueChange={handleTimeRangeChange}
+              buttons={[
+                {
+                  value: '7days',
+                  label: 'Last 7 Days',
+                },
+                {
+                  value: '30days',
+                  label: 'Last 30 Days',
+                }
+              ]}
+              style={styles.segmentedButtons}
+            />
+          </View>
+          
+          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
+            <Text variant="bodyMedium">No mood data available for this time period.</Text>
+          </View>
+        </SafeAreaView>
+      </PaperSheet>
+    );
+  }
+  
+  // Width for the chart (full screen width minus padding)
+  const screenWidth = Dimensions.get('window').width - 40;
   
   return (
     <PaperSheet>
       <SafeAreaView style={styles.container}>
         <Appbar.Header style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)} />
+          <Appbar.BackAction 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              navigation.goBack();
+            }} 
+          />
           <Appbar.Content 
             title="Mood Insights" 
             titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
           />
         </Appbar.Header>
         
-        <View style={[styles.content, { paddingHorizontal: hPad }]}>
-          {/* Time Range Filter */}
-          <View style={styles.filterContainer}>
-            <Chip 
-              selected={timeRange === '7d'} 
-              onPress={() => handleRangeChange('7d')}
-              style={[
-                styles.chip, 
-                { 
-                  backgroundColor: timeRange === '7d' 
-                    ? theme.colors.primary + '30' 
-                    : theme.colors.surfaceVariant
+        <ScrollView 
+          style={styles.content}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.timeFilterContainer}>
+            <SegmentedButtons
+              value={timeRange}
+              onValueChange={handleTimeRangeChange}
+              buttons={[
+                {
+                  value: '7days',
+                  label: 'Last 7 Days',
+                },
+                {
+                  value: '30days',
+                  label: 'Last 30 Days',
                 }
               ]}
-            >
-              7 days
-            </Chip>
-            <Chip 
-              selected={timeRange === '30d'} 
-              onPress={() => handleRangeChange('30d')}
-              style={[
-                styles.chip, 
-                { 
-                  backgroundColor: timeRange === '30d' 
-                    ? theme.colors.primary + '30' 
-                    : theme.colors.surfaceVariant
-                }
-              ]}
-            >
-              30 days
-            </Chip>
+              style={styles.segmentedButtons}
+            />
           </View>
           
-          {/* Mood Chart */}
-          <Card 
-            style={[
-              styles.chartCard, 
-              { 
-                elevation: 4, 
-                shadowColor: theme.colors.secondary + '26',
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.roundness,
-              }
-            ]}
-          >
-            <Card.Content>
-              <Text 
-                variant="titleMedium" 
-                style={{ 
-                  marginBottom: 16, 
-                  fontFamily: 'PlayfairDisplay_700Bold' 
-                }}
-              >
-                Mood Trends
-              </Text>
-              
-              {moodData.length > 0 ? (
-                <View style={styles.chartContainer}>
-                  <View style={[styles.placeholderChart, {backgroundColor: theme.colors.surfaceVariant}]}>
-                    <RNText style={{color: theme.colors.onSurface}}>
-                      Chart visualization coming soon
-                    </RNText>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.noDataContainer}>
-                  <Text style={{ fontFamily: 'WorkSans_400Regular' }}>
-                    Not enough data to display for the selected time range.
-                  </Text>
-                </View>
-              )}
-            </Card.Content>
-          </Card>
-          
-          {/* Stats Summary */}
-          <Card 
-            style={[
-              styles.statsCard, 
-              { 
-                elevation: 4, 
-                shadowColor: theme.colors.secondary + '26',
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.roundness,
-              }
-            ]}
-          >
-            <Card.Content>
-              <Text 
-                variant="titleSmall" 
-                style={{ 
-                  marginBottom: 8, 
-                  fontFamily: 'PlayfairDisplay_700Bold' 
-                }}
-              >
-                Summary
-              </Text>
-              
-              <View style={styles.statsRow}>
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Average Mood</Text>
-                  <Text style={styles.statValue}>
-                    {moodData.length > 0
-                      ? (moodData.reduce((sum, item) => sum + item.y, 0) / moodData.length).toFixed(1)
-                      : 'N/A'
-                    }
-                  </Text>
-                </View>
-                
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Highest</Text>
-                  <Text style={styles.statValue}>
-                    {moodData.length > 0
-                      ? Math.max(...moodData.map(d => d.y))
-                      : 'N/A'
-                    }
-                  </Text>
-                </View>
-                
-                <View style={styles.statColumn}>
-                  <Text style={styles.statLabel}>Lowest</Text>
-                  <Text style={styles.statValue}>
-                    {moodData.length > 0
-                      ? Math.min(...moodData.map(d => d.y))
-                      : 'N/A'
-                    }
-                  </Text>
-                </View>
-              </View>
-            </Card.Content>
-          </Card>
-          
-          {/* Legend */}
-          <View style={styles.legend}>
+          <View style={styles.chartContainer}>
             <Text 
-              style={[styles.legendText, { color: theme.colors.onSurfaceVariant }]}
+              style={[
+                styles.chartTitle, 
+                { fontFamily: 'PlayfairDisplay_700Bold', color: theme.colors.onBackground }
+              ]}
             >
-              1 = Very Low, 5 = Very High
+              Mood Trends
             </Text>
+            
+            <LineChart
+              data={{
+                labels: moodData.labels,
+                datasets: [
+                  {
+                    data: moodData.values,
+                    color: () => theme.colors.primary,
+                    strokeWidth: 3
+                  }
+                ]
+              }}
+              width={screenWidth}
+              height={220}
+              chartConfig={{
+                backgroundColor: theme.colors.surface,
+                backgroundGradientFrom: theme.colors.surface,
+                backgroundGradientTo: theme.colors.surface,
+                decimalPlaces: 0,
+                color: () => theme.colors.primary,
+                labelColor: () => theme.colors.onSurfaceVariant,
+                propsForDots: {
+                  r: '5',
+                  strokeWidth: '2',
+                  stroke: theme.colors.primary
+                },
+                style: {
+                  borderRadius: 16
+                }
+              }}
+              bezier
+              style={styles.chart}
+              fromZero
+              yAxisSuffix=""
+              yAxisInterval={1}
+              segments={5}
+            />
           </View>
-        </View>
+          
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <Text variant="labelMedium" style={styles.statLabel}>Average Mood</Text>
+              <Text 
+                variant="headlineSmall" 
+                style={[
+                  styles.statValue, 
+                  { fontFamily: 'PlayfairDisplay_700Bold', color: theme.colors.primary }
+                ]}
+              >
+                {moodData.averageMood}
+              </Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <Text variant="labelMedium" style={styles.statLabel}>Highest</Text>
+              <Text 
+                variant="headlineSmall" 
+                style={[
+                  styles.statValue, 
+                  { fontFamily: 'PlayfairDisplay_700Bold', color: theme.colors.primary }
+                ]}
+              >
+                {moodData.highestMood}
+              </Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <Text variant="labelMedium" style={styles.statLabel}>Lowest</Text>
+              <Text 
+                variant="headlineSmall" 
+                style={[
+                  styles.statValue, 
+                  { fontFamily: 'PlayfairDisplay_700Bold', color: theme.colors.primary }
+                ]}
+              >
+                {moodData.lowestMood}
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </PaperSheet>
   );
@@ -212,61 +269,58 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingBottom: 24,
   },
-  filterContainer: {
-    flexDirection: 'row',
-    marginVertical: 12,
+  scrollContent: {
+    padding: 20,
   },
-  chip: {
-    marginRight: 12,
+  timeFilterContainer: {
+    marginBottom: 20,
   },
-  chartCard: {
-    marginBottom: 16,
+  segmentedButtons: {
+    backgroundColor: '#f5efe7',
   },
   chartContainer: {
-    alignItems: 'center',
+    marginBottom: 24,
+    backgroundColor: '#f9f6f2',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  placeholderChart: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  noDataContainer: {
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsCard: {
+  chartTitle: {
+    fontSize: 18,
     marginBottom: 16,
   },
-  statsRow: {
+  chart: {
+    borderRadius: 12,
+    paddingRight: 16,
+  },
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  statColumn: {
+  statCard: {
+    flex: 1,
+    backgroundColor: '#f9f6f2',
+    borderRadius: 12,
+    padding: 16,
+    margin: 4,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   statLabel: {
-    fontFamily: 'WorkSans_400Regular',
-    fontSize: 12,
-    color: '#6a4e42',
-    marginBottom: 4,
+    marginBottom: 8,
+    textAlign: 'center',
   },
   statValue: {
-    fontFamily: 'PlayfairDisplay_700Bold',
-    fontSize: 18,
-    color: '#b58a65',
-  },
-  legend: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  legendText: {
-    fontFamily: 'WorkSans_400Regular',
-    fontSize: 12,
+    textAlign: 'center',
   },
 });
 

@@ -1,7 +1,7 @@
-import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, navigationRef, navigate } from '../navigation/AppNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -25,6 +25,11 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
   // Get navigation from props or from hook as fallback
   const hookNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const navigation = navigationProp || hookNavigation;
+  
+  useEffect(() => {
+    console.log('BottomSheetCompose mounted, navigation ready:', navigation !== undefined);
+    return () => console.log('BottomSheetCompose unmounted');
+  }, [navigation]);
   
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -61,17 +66,27 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
   // Handle option press
   const handleOptionPress = (screen: EntryScreen) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log(`Attempting to navigate to ${screen} from BottomSheet`);
     
     // Close the sheet first
     bottomSheetRef.current?.close();
     
     // Try to navigate using the passed navigation prop first
     setTimeout(() => {
-      if (navigation) {
-        navigation.navigate(screen);
-      } else {
-        // Fallback to our helper function that uses navigationRef
-        navigate(screen);
+      console.log('Navigation timeout triggered, attempting navigation');
+      try {
+        if (navigation) {
+          console.log(`Using passed navigation to navigate to ${screen}`);
+          navigation.navigate(screen);
+        } else if (navigationRef.isReady()) {
+          console.log(`Using navigationRef to navigate to ${screen}`);
+          // Fallback to our helper function that uses navigationRef
+          navigate(screen);
+        } else {
+          console.error('Navigation is not ready, cannot navigate');
+        }
+      } catch (error) {
+        console.error('Navigation error:', error);
       }
     }, 300);
   };
@@ -101,6 +116,34 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
       backgroundStyle={{ backgroundColor: '#fff' }}
     >
       <View style={styles.contentContainer}>
+        {/* Debug Option - Only in development */}
+        <TouchableOpacity
+          style={[styles.optionItem, { backgroundColor: '#ffcccc' }]}
+          onPress={() => {
+            console.log('Debug navigation from BottomSheet');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            bottomSheetRef.current?.close();
+            
+            setTimeout(() => {
+              if (navigation) {
+                navigation.navigate('Debug');
+                console.log('Debug navigation executed');
+              }
+            }, 300);
+          }}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons 
+            name="bug"
+            size={28} 
+            color="red"
+            style={styles.optionIcon}
+          />
+          <Text style={[styles.optionText, { color: 'red' }]}>
+            Debug Navigation
+          </Text>
+        </TouchableOpacity>
+
         {entryOptions.map((option) => (
           <TouchableOpacity
             key={option.label}

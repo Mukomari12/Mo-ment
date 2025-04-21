@@ -19,6 +19,8 @@ const mockImages = [
 ];
 
 const MediaEntryScreen: React.FC<MediaEntryScreenProps> = ({ navigation }) => {
+  console.log('MediaEntry props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
   const addEntry = useJournalStore(state => state.addEntry);
   const [selectedImages, setSelectedImages] = useState<any[]>(mockImages);

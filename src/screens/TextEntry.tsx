@@ -11,6 +11,8 @@ type TextEntryScreenProps = {
 };
 
 const TextEntryScreen: React.FC<TextEntryScreenProps> = ({ navigation }) => {
+  console.log('TextEntry props:', { props: { navigation }, routeParams: {} });
+  
   const theme = useTheme();
   const addEntry = useJournalStore(state => state.addEntry);
   const [text, setText] = useState('');
