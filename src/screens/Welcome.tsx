@@ -31,9 +31,10 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
             resizeMode="contain"
           />
           <Text 
-            style={styles.title}
+            style={styles.appTitle}
+            variant="headlineLarge"
           >
-            Mowment
+            Mo-ment
           </Text>
           <Text 
             style={styles.tagline}
@@ -54,6 +55,11 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           >
             Get Started
           </Button>
+          <Text 
+            style={styles.definition}
+          >
+            (n.) "for&nbsp;all&nbsp;the&nbsp;moments&nbsp;that&nbsp;truly&nbsp;matter"
+          </Text>
         </View>
       </View>
     </SafeAreaView>
@@ -82,7 +88,7 @@ const styles = StyleSheet.create({
     height: 120,
     marginBottom: 20,
   },
-  title: {
+  appTitle: {
     fontWeight: 'bold',
     fontSize: 32,
     marginBottom: 8,
@@ -97,11 +103,12 @@ const styles = StyleSheet.create({
   bottomSection: {
     width: '100%',
     paddingHorizontal: 20,
+    alignItems: 'center',
   },
   button: {
     width: '100%',
     borderRadius: 12,
-    marginTop: 20,
+    marginBottom: 30,
   },
   buttonLabel: {
     fontSize: 18,
@@ -111,6 +118,14 @@ const styles = StyleSheet.create({
   buttonContent: {
     height: 56,
     width: '100%',
+  },
+  definition: {
+    fontStyle: 'italic',
+    fontSize: 14,
+    fontFamily: 'Baskerville',
+    color: '#3d2f28',
+    textAlign: 'center',
+    opacity: 0.7,
   },
 });
 

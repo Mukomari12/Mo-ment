@@ -1,0 +1,1 @@
+export const devLog = (...args:any[])=>__DEV__ && console.log('[DEV]',...args); 

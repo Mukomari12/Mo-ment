@@ -4,6 +4,7 @@ import { Text, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type OnboardingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
@@ -46,16 +47,16 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  const goToNextSlide = () => {
+  const goToNextSlide = async () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({
         index: currentIndex + 1,
         animated: true,
       });
     } else {
-      // Last slide, navigate to Dashboard
+      // Last slide, navigate to Passkey screen without saving completion status
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      navigation.replace('Dashboard');
+      navigation.replace('Passkey');
     }
   };
 

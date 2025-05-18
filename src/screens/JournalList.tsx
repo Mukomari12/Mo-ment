@@ -1,21 +1,34 @@
-import React from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { View, StyleSheet, FlatList, SafeAreaView } from 'react-native';
-import { Text, Appbar, Button } from 'react-native-paper';
+import { Text, Button, useTheme, FAB } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { useJournalStore, Entry } from '../store/useJournalStore';
 import EntryCard from '../components/EntryCard';
-import PaperSheet from '../components/PaperSheet';
+import Placeholder from '../components/Placeholder';
+import { BottomSheetComposeRef } from '../components/BottomSheetCompose';
 import * as Haptics from 'expo-haptics';
+import { devLog } from '../utils/devLog';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type JournalListScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'JournalList'>;
 };
 
 const JournalListScreen: React.FC<JournalListScreenProps> = ({ navigation }) => {
-  console.log('JournalList props:', { props: { navigation }, routeParams: {} });
+  const theme = useTheme();
+  const rawEntries = useJournalStore(s => s.entries);
+  const entries = useMemo(
+    () => [...rawEntries].sort((a, b) => b.createdAt - a.createdAt),
+    [rawEntries]
+  );
   
-  const entries = useJournalStore(state => state.entries);
+  // Log only when entries count changes to prevent log spam
+  useEffect(() => {
+    devLog('JournalList entries:', entries.length);
+  }, [entries.length]);
+  
+  const bottomSheetRef = useRef<BottomSheetComposeRef>(null);
 
   const handleEntryPress = (entry: Entry) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -26,31 +39,30 @@ const JournalListScreen: React.FC<JournalListScreenProps> = ({ navigation }) => 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     navigation.navigate('TextEntry');
   };
+  
+  const handleDeleteEntry = (entryId: string) => {
+    // Call the removeEntry function from the store
+    useJournalStore.getState().removeEntry(entryId);
+  };
 
   return (
-    <PaperSheet>
-      <SafeAreaView style={styles.container}>
-        <Appbar.Header style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction 
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              navigation.goBack();
-            }} 
-          />
-          <Appbar.Content 
-            title="Journal Entries" 
-            titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
-          />
-        </Appbar.Header>
-        
+    <LinearGradient 
+      colors={['#F9F6F2', '#f2ede4']} 
+      style={styles.container}
+    >
+      <SafeAreaView style={styles.safeArea}>
+        <Text style={[styles.headerTitle, {color: theme.colors.primary, fontFamily: 'PlayfairDisplay_700Bold'}]}>
+          Journal Entries ({entries.length})
+        </Text>
+
         {entries.length === 0 ? (
-          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
-            <Text variant="bodyMedium" style={{marginBottom: 20}}>No entries to display yet.</Text>
+          <View style={styles.emptyContainer}>
+            <Placeholder msg="No entries to display yet." />
             <Button 
               mode="contained" 
               onPress={handleNewEntry}
               buttonColor="#b58a65"
-              style={{borderRadius: 8}}
+              style={styles.createButton}
             >
               Create First Entry
             </Button>
@@ -58,20 +70,30 @@ const JournalListScreen: React.FC<JournalListScreenProps> = ({ navigation }) => 
         ) : (
           <FlatList
             data={entries}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
               <EntryCard 
                 entry={item} 
                 onPress={handleEntryPress}
                 style={styles.entryCard}
                 navigation={navigation}
+                onDelete={handleDeleteEntry}
               />
             )}
             contentContainerStyle={styles.listContent}
           />
         )}
+        
+        {entries.length > 0 && (
+          <FAB
+            icon="pencil-plus"
+            style={styles.fab}
+            onPress={handleNewEntry}
+            label="New Entry"
+          />
+        )}
       </SafeAreaView>
-    </PaperSheet>
+    </LinearGradient>
   );
 };
 
@@ -79,12 +101,37 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  safeArea: {
+    flex: 1,
+  },
+  headerTitle: {
+    textAlign: 'center',
+    fontSize: 20,
+    marginVertical: 16,
+  },
   listContent: {
     padding: 16,
+    paddingBottom: 80, // Extra padding for FAB
   },
   entryCard: {
     marginBottom: 12,
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  createButton: {
+    marginTop: 20,
+    borderRadius: 8,
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
+  }
 });
 
 export default JournalListScreen; 

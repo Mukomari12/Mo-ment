@@ -1,11 +1,11 @@
-import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle, useEffect } from 'react';
+import React, { useRef, useCallback, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
-import { useNavigation, useNavigationContainerRef } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, navigationRef, navigate } from '../navigation/AppNavigator';
+import { RootStackParamList } from '../navigation/AppNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { devLog } from '../utils/devLog';
 
 export type BottomSheetComposeRef = {
   expand: () => void;
@@ -13,28 +13,28 @@ export type BottomSheetComposeRef = {
 };
 
 type BottomSheetComposeProps = {
-  navigation?: NativeStackNavigationProp<RootStackParamList, any>;
+  navigation: NativeStackNavigationProp<RootStackParamList, any>;
+  style?: any; // Allow passing style prop
 };
 
 // Define the specific entry screens we'll navigate to
 type EntryScreen = 'TextEntry' | 'VoiceEntry' | 'MediaEntry';
 
-const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeProps>(({ navigation: navigationProp }, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
-  
-  // Get navigation from props or from hook as fallback
-  const hookNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const navigation = navigationProp || hookNavigation;
-  
-  useEffect(() => {
-    console.log('BottomSheetCompose mounted, navigation ready:', navigation !== undefined);
-    return () => console.log('BottomSheetCompose unmounted');
-  }, [navigation]);
+const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeProps>(
+  ({ navigation, style }, ref) => {
+    const bottomSheetRef = useRef<BottomSheet>(null);
   
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
     expand: () => {
-      bottomSheetRef.current?.expand();
+      devLog('Bottom sheet expand() called');
+      console.log('Expanding bottom sheet...');
+      if (bottomSheetRef.current) {
+        console.log('BottomSheet ref exists, calling snapToIndex(0)');
+        bottomSheetRef.current.snapToIndex(0);  // always open to first snap-point
+      } else {
+        console.log('BottomSheet ref is null or undefined!');
+      }
     },
     close: () => {
       bottomSheetRef.current?.close();
@@ -42,7 +42,7 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
   }));
 
   // Snap points
-  const snapPoints = useMemo(() => ['35%'], []);
+  const snapPoints = useMemo(() => ['35%', '80%'], []); // second snap for drag
 
   // Entry options with properly typed icon names
   const entryOptions = [
@@ -64,31 +64,20 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
   ];
 
   // Handle option press
-  const handleOptionPress = (screen: EntryScreen) => {
+  const handleOptionPress = async (screen: EntryScreen) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    console.log(`Attempting to navigate to ${screen} from BottomSheet`);
     
-    // Close the sheet first
-    bottomSheetRef.current?.close();
-    
-    // Try to navigate using the passed navigation prop first
-    setTimeout(() => {
-      console.log('Navigation timeout triggered, attempting navigation');
-      try {
-        if (navigation) {
-          console.log(`Using passed navigation to navigate to ${screen}`);
-          navigation.navigate(screen);
-        } else if (navigationRef.isReady()) {
-          console.log(`Using navigationRef to navigate to ${screen}`);
-          // Fallback to our helper function that uses navigationRef
-          navigate(screen);
-        } else {
-          console.error('Navigation is not ready, cannot navigate');
-        }
-      } catch (error) {
-        console.error('Navigation error:', error);
+    // Close the sheet first and wait for it to close
+    try {
+      await bottomSheetRef.current?.close();
+      
+      // Navigate after sheet is closed
+      if (navigation) {
+        navigation.navigate(screen);
       }
-    }, 300);
+    } catch (error) {
+      devLog('Error in navigation:', error);
+    }
   };
 
   // Backdrop component using the built-in BottomSheetBackdrop
@@ -113,23 +102,27 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
       enablePanDownToClose
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={{ backgroundColor: '#6a4e42' }}
-      backgroundStyle={{ backgroundColor: '#fff' }}
+      backgroundStyle={{ 
+        backgroundColor: '#fff',
+      }}
+      style={style}
     >
       <View style={styles.contentContainer}>
         {/* Debug Option - Only in development */}
         <TouchableOpacity
           style={[styles.optionItem, { backgroundColor: '#ffcccc' }]}
-          onPress={() => {
-            console.log('Debug navigation from BottomSheet');
+          onPress={async () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            bottomSheetRef.current?.close();
             
-            setTimeout(() => {
+            try {
+              await bottomSheetRef.current?.close();
+              
               if (navigation) {
                 navigation.navigate('Debug');
-                console.log('Debug navigation executed');
               }
-            }, 300);
+            } catch (error) {
+              devLog('Error in debug navigation:', error);
+            }
           }}
           activeOpacity={0.7}
         >
@@ -162,6 +155,10 @@ const BottomSheetCompose = forwardRef<BottomSheetComposeRef, BottomSheetComposeP
             </Text>
           </TouchableOpacity>
         ))}
+        {/* Fallback text if map ran but produced nothing */}
+        {entryOptions.length === 0 && (
+          <Text style={{textAlign:'center', marginTop:32}}>No entry types defined</Text>
+        )}
       </View>
     </BottomSheet>
   );

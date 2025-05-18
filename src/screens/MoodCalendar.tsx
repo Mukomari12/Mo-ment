@@ -1,15 +1,15 @@
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, View, ScrollView } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { StyleSheet, View, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Appbar, Text, useTheme, Chip } from 'react-native-paper';
+import { Text, useTheme, Chip } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { Calendar } from 'react-native-calendars';
 import { useJournalStore } from '../store/useJournalStore';
 import { format, subMonths, isThisYear } from 'date-fns';
-import PaperSheet from '../components/PaperSheet';
 import { useSpacing } from '../utils/useSpacing';
 import * as Haptics from 'expo-haptics';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 type MoodCalendarScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'MoodCalendar'>;
@@ -24,14 +24,13 @@ type MarkedDates = {
       };
       text: {
         color: string;
-        fontFamily: string;
       };
     };
   };
 };
 
 const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) => {
-  console.log('MoodCalendar props:', { props: { navigation }, routeParams: {} });
+  console.log('MoodCalendarScreen rendered');
   
   const theme = useTheme();
   const { hPad } = useSpacing();
@@ -52,18 +51,42 @@ const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) =
   const markedDates = useMemo(() => {
     const marked: MarkedDates = {};
     
-    moods.forEach(mood => {
-      const score = mood.score;
-      if (score >= 1 && score <= 5) {
-        marked[mood.date] = {
+    // Instead of using the moods array, we'll generate dates from entries with mood data
+    entries.forEach(entry => {
+      if (entry.mood) {
+        // Convert the timestamp to date string format (YYYY-MM-DD)
+        const date = new Date(entry.createdAt).toISOString().split('T')[0];
+        
+        // If the mood is a number directly, use it
+        let score: number;
+        if (typeof entry.mood === 'number') {
+          score = entry.mood;
+        } else if (typeof entry.mood === 'object' && entry.mood !== null) {
+          // If the mood is an Emotion object with a label, convert it to a number
+          // This is just a simplistic mapping - you may want to enhance this
+          const moodMap: Record<string, number> = {
+            'Very Low': 1,
+            'Low': 2,
+            'Neutral': 3,
+            'Good': 4,
+            'Excellent': 5
+          };
+          score = moodMap[entry.mood.label] || 3; // Default to neutral if no match
+        } else {
+          return; // Skip this entry if no valid mood
+        }
+        
+        // Keep scores within the 1-5 range
+        const clampedScore = Math.min(5, Math.max(1, score));
+        
+        marked[date] = {
           customStyles: {
             container: {
-              backgroundColor: moodColors[score - 1],
+              backgroundColor: moodColors[clampedScore - 1],
               borderRadius: 6,
             },
             text: {
-              color: score > 3 ? '#3c2c1d' : '#6a4e42',
-              fontFamily: 'WorkSans_400Regular',
+              color: clampedScore > 3 ? '#3c2c1d' : '#6a4e42',
             },
           },
         };
@@ -71,7 +94,14 @@ const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) =
     });
     
     return marked;
-  }, [moods]);
+  }, [entries, moodColors]);
+  
+  // Only log when marked dates count changes, not on every render
+  useEffect(() => {
+    const markedDatesCount = Object.keys(markedDates).length;
+    const entriesWithMoodCount = entries.filter(entry => entry.mood !== undefined).length;
+    console.log('MoodCalendar marked dates:', markedDatesCount, 'from', entriesWithMoodCount, 'entries with mood data');
+  }, [markedDates, entries]);
   
   const toggleViewMode = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -105,242 +135,211 @@ const MoodCalendarScreen: React.FC<MoodCalendarScreenProps> = ({ navigation }) =
   };
   
   // Show a fallback if there's no data
-  if (entries.length === 0 || moods.length === 0) {
+  const entriesWithMood = entries.filter(entry => entry.mood !== undefined);
+  if (entriesWithMood.length === 0) {
     return (
-      <PaperSheet>
-        <SafeAreaView style={styles.container}>
-          <Appbar.Header style={{ backgroundColor: 'transparent' }}>
-            <Appbar.BackAction 
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                navigation.goBack();
-              }} 
-            />
-            <Appbar.Content 
-              title="Mood Calendar" 
-              titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
-            />
-          </Appbar.Header>
-          
-          <View style={{flex:1, justifyContent:'center', alignItems:'center', padding: 20}}>
-            <Text variant="bodyMedium">Add at least one entry to view analytics.</Text>
-          </View>
-        </SafeAreaView>
-      </PaperSheet>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text variant="headlineMedium">No Mood Data</Text>
+          <Text variant="bodyLarge" style={{textAlign: 'center', marginTop: 10}}>
+            Create entries with mood ratings to see your calendar.
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
   
   return (
-    <PaperSheet>
-      <SafeAreaView style={styles.container}>
-        <Appbar.Header style={{ backgroundColor: 'transparent' }}>
-          <Appbar.BackAction onPress={handleBack} />
-          <Appbar.Content 
-            title="Mood Calendar" 
-            titleStyle={{ fontFamily: 'PlayfairDisplay_700Bold' }}
-          />
-        </Appbar.Header>
+    <SafeAreaView style={styles.container}>
+      <View style={[styles.filterContainer, { paddingHorizontal: hPad }]}>
+        <Chip
+          selected={viewMode === 'month'}
+          onPress={() => toggleViewMode()}
+          style={[
+            styles.chip,
+            {
+              backgroundColor: viewMode === 'month'
+                ? theme.colors.primary + '30'
+                : theme.colors.surfaceVariant,
+            },
+          ]}
+        >
+          Month View
+        </Chip>
         
-        <View style={[styles.filterContainer, { paddingHorizontal: hPad }]}>
-          <Chip
-            selected={viewMode === 'month'}
-            onPress={() => toggleViewMode()}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: viewMode === 'month'
-                  ? theme.colors.primary + '30'
-                  : theme.colors.surfaceVariant,
-              },
-            ]}
-          >
-            Month View
-          </Chip>
-          
-          <Chip
-            selected={viewMode === 'year'}
-            onPress={() => toggleViewMode()}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: viewMode === 'year'
-                  ? theme.colors.primary + '30'
-                  : theme.colors.surfaceVariant,
-              },
-            ]}
-          >
-            Year View
-          </Chip>
+        <Chip
+          selected={viewMode === 'year'}
+          onPress={() => toggleViewMode()}
+          style={[
+            styles.chip,
+            {
+              backgroundColor: viewMode === 'year'
+                ? theme.colors.primary + '30'
+                : theme.colors.surfaceVariant,
+            },
+          ]}
+        >
+          Year View
+        </Chip>
+      </View>
+      
+      {viewMode === 'month' ? (
+        <Calendar
+          markingType="custom"
+          markedDates={markedDates}
+          initialDate={currentDate}
+          theme={{
+            calendarBackground: 'transparent',
+            textSectionTitleColor: theme.colors.onBackground,
+            selectedDayBackgroundColor: theme.colors.primary,
+            selectedDayTextColor: '#ffffff',
+            todayTextColor: theme.colors.primary,
+            dayTextColor: theme.colors.onBackground,
+            textDisabledColor: theme.colors.onSurfaceDisabled,
+            monthTextColor: theme.colors.onBackground,
+            textMonthFontSize: 18,
+            textDayFontSize: 16,
+            textDayHeaderFontSize: 13
+          }}
+          enableSwipeMonths={true}
+          style={[
+            styles.calendar,
+            {
+              marginHorizontal: hPad,
+              marginBottom: 16,
+            }
+          ]}
+        />
+      ) : (
+        <ScrollView 
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingHorizontal: hPad }}
+        >
+          {getYearMonths().map(month => (
+            <View key={month} style={styles.monthContainer}>
+              <Text 
+                style={[
+                  styles.monthName, 
+                  { 
+                    color: theme.colors.onBackground,
+                  }
+                ]}
+              >
+                {renderMonthName(month)}
+              </Text>
+              <Calendar
+                markingType="custom"
+                markedDates={markedDates}
+                hideArrows
+                hideExtraDays
+                initialDate={`${month}-01`}
+                theme={{
+                  calendarBackground: 'transparent',
+                  textSectionTitleColor: theme.colors.onBackground,
+                  selectedDayBackgroundColor: theme.colors.primary,
+                  selectedDayTextColor: '#ffffff',
+                  todayTextColor: theme.colors.primary,
+                  dayTextColor: theme.colors.onBackground,
+                  textDisabledColor: theme.colors.onSurfaceDisabled,
+                  monthTextColor: 'transparent', // Hide month name (we show our own)
+                  textDayFontSize: 14,
+                  textDayHeaderFontSize: 12
+                }}
+                style={styles.yearCalendar}
+              />
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      
+      <View style={[styles.legendContainer, { paddingHorizontal: hPad }]}>
+        <Text style={styles.legendTitle}>Mood Legend</Text>
+        <View style={styles.legend}>
+          {moodColors.map((color, index) => (
+            <View key={index} style={styles.legendItem}>
+              <View 
+                style={[
+                  styles.legendColor,
+                  { backgroundColor: color }
+                ]} 
+              />
+              <Text style={styles.legendText}>
+                {index === 0 ? 'Low' : index === 4 ? 'High' : ''}
+              </Text>
+            </View>
+          ))}
         </View>
-        
-        {viewMode === 'month' ? (
-          <Calendar
-            markingType="custom"
-            markedDates={markedDates}
-            initialDate={currentDate}
-            theme={{
-              calendarBackground: 'transparent',
-              textSectionTitleColor: theme.colors.onBackground,
-              selectedDayBackgroundColor: theme.colors.primary,
-              selectedDayTextColor: '#ffffff',
-              todayTextColor: theme.colors.primary,
-              dayTextColor: theme.colors.onBackground,
-              textDisabledColor: theme.colors.onSurfaceDisabled,
-              monthTextColor: theme.colors.onBackground,
-              textMonthFontFamily: 'PlayfairDisplay_700Bold',
-              textDayHeaderFontFamily: 'WorkSans_500Medium',
-              textMonthFontSize: 18,
-              textDayFontSize: 16,
-              textDayHeaderFontSize: 13
-            }}
-            enableSwipeMonths={true}
-            style={[
-              styles.calendar,
-              {
-                marginHorizontal: hPad,
-                marginBottom: 16,
-              }
-            ]}
-          />
-        ) : (
-          <ScrollView 
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: hPad }}
-          >
-            {getYearMonths().map(month => (
-              <View key={month} style={styles.monthContainer}>
-                <Text 
-                  style={[
-                    styles.monthName, 
-                    { 
-                      fontFamily: 'PlayfairDisplay_700Bold',
-                      color: theme.colors.onBackground,
-                    }
-                  ]}
-                >
-                  {renderMonthName(month)}
-                </Text>
-                <Calendar
-                  markingType="custom"
-                  markedDates={markedDates}
-                  hideArrows
-                  hideExtraDays
-                  initialDate={`${month}-01`}
-                  theme={{
-                    calendarBackground: 'transparent',
-                    textSectionTitleColor: theme.colors.onBackground,
-                    selectedDayBackgroundColor: theme.colors.primary,
-                    selectedDayTextColor: '#ffffff',
-                    todayTextColor: theme.colors.primary,
-                    dayTextColor: theme.colors.onBackground,
-                    textDisabledColor: theme.colors.onSurfaceDisabled,
-                    monthTextColor: 'transparent', // Hide month name (we show our own)
-                    textDayHeaderFontFamily: 'WorkSans_500Medium',
-                    textDayFontSize: 14,
-                    textDayHeaderFontSize: 12
-                  }}
-                  style={styles.yearCalendar}
-                />
-              </View>
-            ))}
-          </ScrollView>
-        )}
-        
-        <View style={[styles.legendContainer, { paddingHorizontal: hPad }]}>
-          <Text 
-            style={[
-              styles.legendTitle, 
-              { 
-                fontFamily: 'PlayfairDisplay_700Bold',
-                color: theme.colors.onBackground
-              }
-            ]}
-          >
-            Mood Legend
-          </Text>
-          <View style={styles.legendRow}>
-            {moodColors.map((color, index) => (
-              <View key={index} style={styles.legendItem}>
-                <View 
-                  style={[
-                    styles.colorSquare, 
-                    { backgroundColor: color }
-                  ]} 
-                />
-                <Text 
-                  style={[
-                    styles.legendText, 
-                    { 
-                      fontFamily: 'WorkSans_400Regular',
-                      color: theme.colors.onSurfaceVariant
-                    }
-                  ]}
-                >
-                  {index + 1}
-                </Text>
-              </View>
-            ))}
-          </View>
-          <Text 
-            style={[
-              styles.legendSubtext, 
-              { 
-                fontFamily: 'WorkSans_400Regular',
-                color: theme.colors.onSurfaceVariant
-              }
-            ]}
-          >
-            1 = Low Mood, 5 = High Mood
-          </Text>
-        </View>
-      </SafeAreaView>
-    </PaperSheet>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F9F6F2',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    color: '#3d2f28',
+    fontFamily: 'PlayfairDisplay_700Bold',
   },
   filterContainer: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
     marginVertical: 12,
   },
   chip: {
-    marginRight: 12,
+    minWidth: 120,
   },
   calendar: {
-    borderRadius: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    borderRadius: 10,
+    elevation: 2,
+    marginTop: 10,
   },
   yearCalendar: {
-    height: 280,
+    borderRadius: 10,
+    marginBottom: 8,
   },
   monthContainer: {
     marginBottom: 24,
   },
   monthName: {
-    marginBottom: 8,
     fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    marginLeft: 8,
   },
   legendContainer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#00000011',
+    marginVertical: 16,
   },
   legendTitle: {
-    marginBottom: 12,
-    fontSize: 16,
+    fontSize: 14,
+    marginBottom: 8,
+    opacity: 0.7,
   },
-  legendRow: {
+  legend: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
   },
   legendItem: {
     alignItems: 'center',
   },
-  colorSquare: {
+  legendColor: {
     width: 24,
     height: 24,
     borderRadius: 4,
@@ -348,16 +347,13 @@ const styles = StyleSheet.create({
   },
   legendText: {
     fontSize: 12,
+    opacity: 0.7,
   },
-  legendSubtext: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  fallbackContainer: {
+  emptyContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    padding: 20,
   },
 });
 

@@ -1,85 +1,71 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { Appbar, FAB, Text, useTheme, ActivityIndicator, Snackbar, Chip } from 'react-native-paper';
+import React, {useState, useEffect, useRef} from 'react';
+import {View, StyleSheet, Alert, Platform, TouchableOpacity} from 'react-native';
+import {Button, Text, ActivityIndicator, Surface, useTheme} from 'react-native-paper';
+import {Audio} from 'expo-av';
+import * as Haptics from 'expo-haptics';
+import {useJournalStore} from '../store/useJournalStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import WaveRecorder from '../components/WaveRecorder';
-import { Audio } from 'expo-av';
-import { useJournalStore } from '../store/useJournalStore';
-import { transcribe, classifyMood } from '../api/openai';
+import { transcribe } from '../api/openai';
+import { checkApiKey, showApiKeyAlert } from '../utils/apiKeyStatus';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import axios from 'axios';
+import { OPENAI_API_KEY } from '@env';
+
+// Debug mode for simulators
+const DEBUG_MODE = Platform.OS === 'ios' && !Platform.isPad && !Platform.isTV && (Platform.constants.systemName?.includes('Simulator') || false);
 
 type VoiceEntryScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'VoiceEntry'>;
 };
 
-const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
-  console.log('VoiceEntry props:', { props: { navigation }, routeParams: {} });
-  
-  const theme = useTheme();
-  const addEntry = useJournalStore(state => state.addEntry);
+export default function VoiceEntry({ navigation }: VoiceEntryScreenProps) {
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [transcription, setTranscription] = useState('');
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [mood, setMood] = useState<number | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  const [audioURI, setAudioURI] = useState<string>('');
+  const [transcript, setTranscript] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const theme = useTheme();
+  const addVoice = useJournalStore(s => s.addVoiceEntry);
   
-  // Mock available tags
-  const availableTags = ['Work', 'Personal', 'Family', 'Travel', 'Health', 'Ideas'];
-
-  const toggleTag = (tag: string) => {
-    setSelectedTags(prev => 
-      prev.includes(tag) 
-        ? prev.filter(t => t !== tag) 
-        : [...prev, tag]
-    );
-  };
-
+  // Check API key on component mount
   useEffect(() => {
-    // Request permissions
-    Audio.requestPermissionsAsync();
-    Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-    });
+    const isValid = checkApiKey();
+    if (!isValid) {
+      showApiKeyAlert();
+      setError('OpenAI API key not configured. Voice transcription will not work.');
+    }
+    
+    if (DEBUG_MODE) {
+      console.log("Running in iOS Simulator debug mode");
+    }
+  }, []);
 
+  // Setup navigation options
+  useEffect(() => {
+    navigation.setOptions({
+      headerBackTitle: 'Cancel',
+    });
+  }, [navigation]);
+  
+  useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
-      }
-      if (recording) {
-        stopRecording();
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    } else if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isRecording]);
-
-  const startRecording = async () => {
+  
+  const startRec = async () => {
     try {
-      setRecordingTime(0);
-      setTranscription('');
-      setMood(undefined);
+      setError('');
       
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
         setError('Permission to access microphone was denied');
         return;
       }
@@ -89,275 +75,301 @@ const VoiceEntryScreen: React.FC<VoiceEntryScreenProps> = ({ navigation }) => {
         playsInSilentModeIOS: true,
       });
 
+      console.log('Starting recording...');
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
       const newRecording = new Audio.Recording();
       await newRecording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       await newRecording.startAsync();
-      
       setRecording(newRecording);
-      setIsRecording(true);
-    } catch (err) {
+      
+      // Start timer for recording duration
+      setRecordingDuration(0);
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      
+    } catch (err: any) {
       console.error('Failed to start recording', err);
-      setError('Failed to start recording: ' + (err instanceof Error ? err.message : String(err)));
+      setError('Failed to start recording: ' + err.message);
     }
   };
 
-  const stopRecording = async () => {
-    if (!recording) return;
-
+  const stopRec = async () => {
     try {
-      setIsRecording(false);
-      await recording.stopAndUnloadAsync();
+      if (!recording) {
+        setError('No active recording found');
+        return;
+      }
       
-      // Begin transcribing the audio
-      const uri = recording.getURI();
-      if (uri) {
-        processRecording(uri);
+      // Clear recording timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      setIsProcessing(true);
+      
+      // Ensure recording is prepared before stopping
+      try {
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        setRecording(null);
+        
+        if (uri) {
+          await handleTranscription(uri);
+        } else {
+          setError('Recording failed: No audio file was created');
+          setIsProcessing(false);
+        }
+      } catch (err: any) {
+        setError('Recording was not properly prepared: ' + err.message);
+        setIsProcessing(false);
+        setRecording(null);
+      }
+    } catch (err: any) {
+      setError('Failed to process recording: ' + err.message);
+      setIsProcessing(false);
+      setRecording(null);
+    }
+  };
+
+  const handleTranscription = async (uri: string) => {
+    setIsProcessing(true);
+    setError('');
+    try {
+      console.log('Transcribing audio from:', uri);
+      
+      // Read audio file as base64
+      const base64Audio = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      // Create FormData object
+      const formData = new FormData();
+      formData.append('file', {
+        uri,
+        name: 'audio.m4a',
+        type: 'audio/m4a',
+      } as any);
+      formData.append('model', 'whisper-1');
+      
+      // Call OpenAI API for transcription
+      const response = await axios.post(
+        'https://api.openai.com/v1/audio/transcriptions',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          },
+        }
+      );
+      
+      const transcriptionText = response.data.text;
+      console.log('Transcription:', transcriptionText);
+      
+      if (transcriptionText) {
+        setTranscript(transcriptionText);
+        // Instead of navigating to TextEntry, save directly and return to Dashboard
+        addVoice(uri, transcriptionText);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.navigate('Dashboard');
       } else {
-        setError('No recording was found');
+        setError('Transcription failed: Empty result');
       }
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-      setError('Failed to stop recording: ' + (err instanceof Error ? err.message : String(err)));
-    }
-  };
-
-  const processRecording = async (uri: string) => {
-    try {
-      setIsTranscribing(true);
-      
-      // Transcribe the audio using OpenAI's Whisper API
-      const text = await transcribe(uri);
-      setTranscription(text);
-      
-      // Classify the mood based on the transcription
-      if (text) {
-        const detectedMood = await classifyMood(text);
-        setMood(detectedMood);
-      }
-    } catch (err) {
-      console.error('Transcription error:', err);
-      setError('AI service unavailable; saved without transcription/mood');
-      // Set some placeholder text to allow saving anyway
-      setTranscription('Voice memo (transcription failed)');
+    } catch (err: any) {
+      console.error('Transcription error', err.response || err);
+      setError(`Transcription failed: ${err.message}`);
     } finally {
-      setIsTranscribing(false);
+      setIsProcessing(false);
     }
   };
-
-  const toggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
+  
+  // Debug function for simulators
+  const testDirectTranscription = () => {
+    Alert.alert(
+      "Simulator Debug Mode",
+      "Since audio recording doesn't always work in simulators, you can save an entry with sample text.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Save Sample Entry",
+          onPress: () => {
+            // Use a mock transcription since recording doesn't work well in simulators
+            addVoice("debug://sample-recording.m4a", "This is a sample voice entry created in debug mode from the simulator. Voice recordings work better on physical devices.");
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            navigation.goBack();
+          }
+        }
+      ]
+    );
   };
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleSave = () => {
-    try {
-      // Save to the journal store
-      addEntry({
-        type: 'voice',
-        content: transcription,
-        tags: selectedTags,
-        mood,
-        uri: recording?.getURI() || undefined,
-      });
-      
-      // Navigate back to dashboard
-      navigation.goBack();
-    } catch (err) {
-      setError('Failed to save entry: ' + (err instanceof Error ? err.message : String(err)));
-    }
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <Appbar.Header>
-        <Appbar.BackAction onPress={() => navigation.goBack()} />
-        <Appbar.Content title="Voice Entry" />
-        {transcription && !isTranscribing && (
-          <Appbar.Action icon="check" onPress={handleSave} disabled={isTranscribing} />
-        )}
-      </Appbar.Header>
-
-      <ScrollView style={styles.contentContainer}>
-        {isRecording && (
-          <View style={styles.waveContainer}>
-            <WaveRecorder />
-          </View>
-        )}
+    <SafeAreaView style={styles.root}>
+      <Surface style={styles.content} elevation={2}>
+        <Text style={styles.title}>Voice Journal Entry</Text>
         
-        {isTranscribing && (
-          <View style={styles.loadingContainer}>
+        {error ? (
+          <View style={styles.errorContainer}>
+            <MaterialCommunityIcons name="alert-circle" size={24} color={theme.colors.error} />
+            <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
+          </View>
+        ) : null}
+        
+        {isProcessing ? (
+          <View style={styles.processingContainer}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={styles.loadingText}>Transcribing your audio...</Text>
-          </View>
-        )}
-        
-        {transcription ? (
-          <View style={styles.transcriptionContainer}>
-            <Text variant="titleLarge" style={styles.transcriptionTitle}>Transcription</Text>
-            <Text style={styles.transcriptionText}>{transcription}</Text>
-            
-            {mood && (
-              <View style={styles.moodContainer}>
-                <Text variant="labelLarge">Detected Mood: {mood}/5</Text>
-                <View style={styles.moodIcons}>
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <View
-                      key={value}
-                      style={[
-                        styles.moodIcon,
-                        { 
-                          backgroundColor: value === mood 
-                            ? theme.colors.primary
-                            : theme.colors.surfaceVariant,
-                          opacity: value === mood ? 1 : 0.5
-                        }
-                      ]}
-                    />
-                  ))}
-                </View>
-              </View>
-            )}
-            
-            <View style={styles.tagsContainer}>
-              <Text variant="labelLarge" style={{ marginBottom: 8 }}>Tags</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {availableTags.map(tag => (
-                  <Chip 
-                    key={tag}
-                    selected={selectedTags.includes(tag)}
-                    onPress={() => toggleTag(tag)} 
-                    style={styles.chip}
-                  >
-                    {tag}
-                  </Chip>
-                ))}
-              </ScrollView>
-            </View>
+            <Text style={styles.processingText}>Processing your recording...</Text>
           </View>
         ) : (
-          <View style={styles.instructionsContainer}>
-            <Text variant="bodyLarge" style={styles.instructionText}>
-              {isRecording 
-                ? "Speak clearly..." 
-                : "Tap the microphone button to start recording"}
-            </Text>
+          <View style={styles.recordingContainer}>
+            {recording ? (
+              <>
+                <View style={styles.recordingIndicator}>
+                  <View style={[styles.recordingDot, { backgroundColor: theme.colors.error }]} />
+                  <Text style={styles.recordingText}>Recording in progress</Text>
+                </View>
+                <Text style={styles.durationText}>{formatTime(recordingDuration)}</Text>
+                <TouchableOpacity 
+                  style={[styles.recordButton, styles.stopButton, { backgroundColor: theme.colors.error }]}
+                  onPress={stopRec}
+                >
+                  <MaterialCommunityIcons name="stop" size={36} color="white" />
+                </TouchableOpacity>
+                <Text style={styles.instructionText}>Tap to stop recording</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.instructionText}>Tap the microphone to start recording</Text>
+                <TouchableOpacity 
+                  style={[styles.recordButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={DEBUG_MODE ? testDirectTranscription : startRec}
+                >
+                  <MaterialCommunityIcons name="microphone" size={36} color="white" />
+                </TouchableOpacity>
+                <Text style={styles.helpText}>Your recording will be transcribed automatically</Text>
+              </>
+            )}
           </View>
         )}
         
-        <View style={styles.timerContainer}>
-          {isRecording && (
-            <Text variant="headlineLarge" style={{ color: theme.colors.error }}>
-              {formatTime(recordingTime)}
-            </Text>
-          )}
-        </View>
-      </ScrollView>
-
-      <FAB
-        icon={isRecording ? "stop" : "microphone"}
-        style={[
-          styles.fab, 
-          { backgroundColor: isRecording ? theme.colors.error : theme.colors.primary }
-        ]}
-        onPress={toggleRecording}
-        disabled={isTranscribing}
-      />
-      
-      <Snackbar
-        visible={!!error}
-        onDismiss={() => setError(null)}
-        action={{
-          label: 'Dismiss',
-          onPress: () => setError(null),
-        }}
-      >
-        {error}
-      </Snackbar>
-    </View>
+        <Button 
+          mode="outlined" 
+          style={styles.cancelButton}
+          onPress={() => navigation.goBack()}
+        >
+          Cancel
+        </Button>
+      </Surface>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: '#fff'
   },
-  contentContainer: {
+  content: {
     flex: 1,
+    margin: 16,
     padding: 20,
+    borderRadius: 12,
+    backgroundColor: 'white',
   },
-  waveContainer: {
-    height: 100,
-    marginVertical: 20,
-  },
-  timerContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-    height: 50,
-  },
-  instructionsContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  instructionText: {
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
     textAlign: 'center',
+    marginBottom: 24,
   },
-  transcriptionContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  transcriptionTitle: {
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 16,
   },
-  transcriptionText: {
-    lineHeight: 24,
-    marginBottom: 24,
+  errorText: {
+    marginLeft: 8,
+    flex: 1,
   },
-  fab: {
-    position: 'absolute',
-    margin: 16,
-    right: 0,
-    bottom: 0,
-  },
-  loadingContainer: {
+  processingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
   },
-  loadingText: {
+  processingText: {
     marginTop: 16,
+    fontSize: 16,
     textAlign: 'center',
   },
-  moodContainer: {
+  recordingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  recordingDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  recordingText: {
+    fontSize: 16,
+  },
+  durationText: {
+    fontSize: 40,
+    fontWeight: 'bold',
     marginBottom: 24,
   },
-  moodIcons: {
-    flexDirection: 'row',
-    marginTop: 8,
+  recordButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 24,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
-  moodIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginRight: 8,
+  stopButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 12,
   },
-  tagsContainer: {
-    marginTop: 16,
+  instructionText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 8,
   },
-  chip: {
-    marginRight: 8,
-    marginVertical: 4,
+  helpText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 12,
+    opacity: 0.7,
   },
-});
-
-export default VoiceEntryScreen; 
+  cancelButton: {
+    marginTop: 'auto',
+  },
+}); 

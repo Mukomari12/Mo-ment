@@ -1,20 +1,20 @@
-import React, { useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
 import { 
   FAB, 
   Card, 
   Text, 
-  Portal, 
   IconButton,
   Button,
+  Portal,
 } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useJournalStore, Entry } from '../store/useJournalStore';
 import EntryCard from '../components/EntryCard';
-import BottomSheetCompose, { BottomSheetComposeRef } from '../components/BottomSheetCompose';
 import * as Haptics from 'expo-haptics';
+import { devLog } from '../utils/devLog';
 
 type DashboardScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
@@ -22,11 +22,21 @@ type DashboardScreenProps = {
 
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const entries = useJournalStore(state => state.entries);
-  const bottomSheetRef = useRef<BottomSheetComposeRef>(null);
+  
+  // Log only when entries count changes to prevent log spam
+  useEffect(() => {
+    devLog('Dashboard entries:', entries.length);
+  }, [entries.length]);
   
   const handleNewEntry = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    bottomSheetRef.current?.expand();
+    console.log('Navigating directly to TextEntry');
+    try {
+      navigation.navigate('TextEntry');
+      console.log('TextEntry navigation executed directly');
+    } catch (error) {
+      console.error('Navigation error:', error);
+    }
   };
 
   const handleEntryPress = (entry: Entry) => {
@@ -34,17 +44,10 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     navigation.navigate('EntryDetail', { id: entry.id });
   };
 
-  const handleNavigation = (screen: Extract<keyof RootStackParamList, 'MoodGraphs' | 'Timeline' | 'MoodCalendar' | 'JournalList' | 'MonthlyCheckup'>) => {
+  const handleNavigation = (screen: Extract<keyof RootStackParamList, 'MoodGraphs' | 'LifeEras' | 'MoodCalendar' | 'JournalList' | 'MonthlyCheckup' | 'ChatBot'>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    console.log(`Attempting to navigate to ${screen}`);
+    devLog(`Attempting to navigate to ${screen}`);
     navigation.navigate(screen);
-  };
-
-  // Debug function to test navigation directly
-  const debugNavigate = () => {
-    console.log('Debug navigation attempt');
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('Debug');
   };
 
   // For empty state, show simple message with button
@@ -54,14 +57,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Journal</Text>
           <View style={styles.headerActions}>
-            <Button
-              mode="contained"
-              onPress={debugNavigate}
-              style={styles.debugButton}
-              buttonColor="red"
-            >
-              Test Nav
-            </Button>
             <Button 
               mode="contained" 
               onPress={handleNewEntry}
@@ -75,11 +70,9 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         </View>
         
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>Welcome to Mowment</Text>
+          <Text style={styles.emptyTitle}>Welcome to Mo-ment</Text>
           <Text style={styles.emptyMessage}>Start capturing your moments by creating your first entry</Text>
         </View>
-        
-        {/* BottomSheetCompose is now only rendered once in the main return statement */}
       </SafeAreaView>
     );
   }
@@ -90,32 +83,46 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Journal</Text>
         <View style={styles.headerActions}>
-          <Button
-            mode="contained"
-            onPress={debugNavigate}
-            style={styles.debugButton}
-            buttonColor="red"
-          >
-            Test Nav
-          </Button>
           <IconButton
             icon="calendar-heart"
             size={28}
             iconColor="#b58a65"
-            onPress={() => handleNavigation('MonthlyCheckup')}
+            onPress={() => {
+              devLog('Mood Calendar pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              try {
+                navigation.navigate('MoodCalendar');
+                devLog('Navigate to MoodCalendar called');
+              } catch (error) {
+                devLog('Navigation error:', error);
+              }
+            }}
             style={styles.headerIcon}
           />
         </View>
       </View>
       
       <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
+        <Button mode="contained" onPress={() => {
+          devLog('Go to Journal List pressed');
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          try {
+            navigation.navigate('JournalList');
+            devLog('Navigate to JournalList called');
+          } catch (error) {
+            devLog('Navigation error:', error);
+          }
+        }} style={{margin:8}}>
+          Go to Journal List
+        </Button>
+        
         <Text style={styles.sectionTitle}>Recent Entries</Text>
         
-        {/* Simple 2-column grid of entries */}
+        {/* Simple 2-column grid of entries - limited to last 5 entries */}
         <View style={styles.entriesGrid}>
           <View style={styles.entriesColumn}>
             {entries
-              .slice(0, 6)
+              .slice(0, 5)
               .filter((_, i) => i % 2 === 0)
               .map(entry => (
                 <EntryCard 
@@ -130,7 +137,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
           <View style={styles.entriesColumn}>
             {entries
-              .slice(0, 6)
+              .slice(0, 5)
               .filter((_, i) => i % 2 === 1)
               .map(entry => (
                 <EntryCard 
@@ -145,29 +152,19 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           </View>
         </View>
         
-        <Button 
-          mode="text" 
-          onPress={() => handleNavigation('JournalList')}
-          style={styles.viewAllButton}
-          textColor="#b58a65"
-          labelStyle={{fontSize: 16}}
-        >
-          See All Entries
-        </Button>
-        
         <Text style={[styles.sectionTitle, {marginTop: 24}]}>Analytics</Text>
         
         <View style={styles.analyticsRow}>
           <TouchableOpacity 
             style={styles.analyticsCard} 
             onPress={() => {
-              console.log('MoodGraphs card pressed');
+              devLog('MoodGraphs card pressed');
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               try {
                 navigation.navigate('MoodGraphs');
-                console.log('Navigate to MoodGraphs called');
+                devLog('Navigate to MoodGraphs called');
               } catch (error) {
-                console.error('Navigation error:', error);
+                devLog('Navigation error:', error);
               }
             }}
             activeOpacity={0.7}
@@ -179,23 +176,60 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           
           <TouchableOpacity 
             style={styles.analyticsCard} 
-            onPress={() => handleNavigation('Timeline')}
+            onPress={() => {
+              devLog('LifeEras card pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              try {
+                navigation.navigate('LifeEras');
+                devLog('Navigate to LifeEras called');
+              } catch (error) {
+                devLog('Navigation error:', error);
+              }
+            }}
             activeOpacity={0.7}
           >
             <MaterialCommunityIcons name="timeline-outline" size={28} color="#b58a65" />
-            <Text style={styles.cardTitle}>Timeline</Text>
+            <Text style={styles.cardTitle}>Life Eras</Text>
             <Text style={styles.cardDescription}>Life eras visualization</Text>
           </TouchableOpacity>
         </View>
         
         <TouchableOpacity 
           style={styles.calendarCard} 
-          onPress={() => handleNavigation('MoodCalendar')}
+          onPress={() => {
+            devLog('MoodCalendar card pressed');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              navigation.navigate('MoodCalendar');
+              devLog('Navigate to MoodCalendar called');
+            } catch (error) {
+              devLog('Navigation error:', error);
+            }
+          }}
           activeOpacity={0.7}
         >
           <MaterialCommunityIcons name="calendar-month" size={28} color="#b58a65" />
           <Text style={styles.cardTitle}>Mood Calendar</Text>
           <Text style={styles.cardDescription}>Calendar view of your daily moods</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.calendarCard} 
+          onPress={() => {
+            devLog('ChatBot card pressed');
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              navigation.navigate('ChatBot');
+              devLog('Navigate to ChatBot called');
+            } catch (error) {
+              devLog('Navigation error:', error);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <MaterialCommunityIcons name="chat-processing" size={28} color="#b58a65" />
+          <Text style={styles.cardTitle}>Mo-ment Companion</Text>
+          <Text style={styles.cardDescription}>Personalized reflective conversation</Text>
         </TouchableOpacity>
       </ScrollView>
       
@@ -206,11 +240,6 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         color="white"
         customSize={64}
       />
-      
-      {/* Single Portal for BottomSheetCompose, shared across both view states */}
-      <Portal>
-        <BottomSheetCompose ref={bottomSheetRef} navigation={navigation} />
-      </Portal>
     </SafeAreaView>
   );
 };
@@ -240,10 +269,6 @@ const styles = StyleSheet.create({
   },
   headerIcon: {
     margin: 0,
-  },
-  debugButton: {
-    marginRight: 8,
-    height: 36,
   },
   content: {
     flex: 1,
@@ -314,7 +339,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 24,
-    bottom: 24,
+    bottom: 32,
     backgroundColor: '#b58a65',
     borderRadius: 32,
   },

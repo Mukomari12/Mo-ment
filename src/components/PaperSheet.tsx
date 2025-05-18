@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { ImageBackground, StyleSheet, View, ViewStyle, Text } from 'react-native';
+import { ImageBackground, StyleSheet, View, ViewStyle } from 'react-native';
 import { useTheme, Surface } from 'react-native-paper';
+import { devLog } from '../utils/devLog';
 
 type PaperSheetProps = {
   children: React.ReactNode;
@@ -8,12 +9,12 @@ type PaperSheetProps = {
 };
 
 const PaperSheet: React.FC<PaperSheetProps> = ({ children, style }) => {
-  console.log("PaperSheet rendering");
+  // devLog("PaperSheet rendering");
   const theme = useTheme();
   
-  useEffect(() => {
-    console.log("PaperSheet mounted");
-  }, []);
+  // useEffect(() => {
+  //   devLog("PaperSheet mounted");
+  // }, []);
 
   return (
     <View style={[styles.outerContainer, { backgroundColor: theme.colors.background }]}>
@@ -26,10 +27,6 @@ const PaperSheet: React.FC<PaperSheetProps> = ({ children, style }) => {
             resizeMode="cover"
           >
             {children}
-            {/* Debug text */}
-            <Text style={{position: 'absolute', top: 5, right: 5, fontSize: 10, color: 'red'}}>
-              PAPERSHEET VISIBLE
-            </Text>
           </ImageBackground>
         </View>
       </Surface>

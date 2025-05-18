@@ -1,24 +1,46 @@
-import React from 'react';
-import { StyleSheet, View, TouchableOpacity } from 'react-native';
-import { Text, Surface, useTheme } from 'react-native-paper';
+import React, { useState } from 'react';
+import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
+import { Text, Surface, useTheme, Menu, IconButton, Divider } from 'react-native-paper';
 import { format } from 'date-fns';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import EmotionChip from './EmotionChip';
 import { Entry } from '../store/useJournalStore';
+import * as Haptics from 'expo-haptics';
 
 type EntryCardProps = {
   entry: Entry;
   onPress: (entry: Entry) => void;
   style?: any;
   navigation?: NativeStackNavigationProp<RootStackParamList, any>;
+  onDelete?: (entryId: string) => void;
 };
 
-const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style, navigation }) => {
+const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style, navigation, onDelete }) => {
   const theme = useTheme();
+  const [menuVisible, setMenuVisible] = useState(false);
   
   const formatDate = (timestamp: number) => {
-    return format(new Date(timestamp), 'MMM d, yyyy');
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear()
+    ) {
+      return 'Today, ' + format(date, 'h:mm a');
+    } else if (
+      date.getDate() === yesterday.getDate() &&
+      date.getMonth() === yesterday.getMonth() &&
+      date.getFullYear() === yesterday.getFullYear()
+    ) {
+      return 'Yesterday, ' + format(date, 'h:mm a');
+    } else {
+      return format(date, 'MMM d, yyyy • h:mm a');
+    }
   };
   
   const getPreview = (content: string, maxLength = 100) => {
@@ -64,6 +86,34 @@ const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style, navigation
     }
   };
   
+  const handleDeletePress = () => {
+    setMenuVisible(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    Alert.alert(
+      "Delete Entry",
+      "Are you sure you want to delete this entry? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          onPress: () => {
+            if (onDelete) {
+              onDelete(entry.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+          },
+          style: "destructive" 
+        }
+      ]
+    );
+  };
+  
+  const toggleMenu = () => {
+    setMenuVisible(!menuVisible);
+    Haptics.selectionAsync();
+  };
+  
   return (
     <TouchableOpacity onPress={() => onPress(entry)} activeOpacity={0.9}>
       <Surface
@@ -93,9 +143,26 @@ const EntryCard: React.FC<EntryCardProps> = ({ entry, onPress, style, navigation
               {formatDate(entry.createdAt)}
             </Text>
             
-            {entry.emotion && (
-              <EmotionChip emotion={entry.emotion} size="small" showLabel={false} />
-            )}
+            <View style={styles.headerRight}>
+              {entry.emotion && (
+                <EmotionChip emotion={entry.emotion} size="small" showLabel={false} />
+              )}
+              
+              <Menu
+                visible={menuVisible}
+                onDismiss={() => setMenuVisible(false)}
+                anchor={
+                  <IconButton 
+                    icon="dots-vertical" 
+                    size={20} 
+                    onPress={toggleMenu}
+                    style={{margin: 0}}
+                  />
+                }
+              >
+                <Menu.Item onPress={handleDeletePress} title="Delete" leadingIcon="trash-can-outline" />
+              </Menu>
+            </View>
           </View>
           
           <View style={styles.content}>
@@ -150,8 +217,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   date: {
     fontSize: 14,
+    flex: 1,
   },
   content: {
     marginBottom: 12,

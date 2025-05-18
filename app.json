@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "MowmentDemo",
-    "slug": "MowmentDemo",
+    "name": "Mo-ment",
+    "slug": "Mo-ment",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/branding/logo_1024.png",
@@ -12,14 +12,19 @@
       "resizeMode": "contain",
       "backgroundColor": "#fdfbf9"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.Mo-ment"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/logo_1024.png",
         "backgroundColor": "#fdfbf9"
-      }
+      },
+      "package": "com.anonymous.Mo-ment"
     },
     "web": {
       "favicon": "./assets/branding/logo_1024.png"
