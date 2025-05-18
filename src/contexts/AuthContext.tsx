@@ -3,174 +3,190 @@
  * This file is part of the "Mowment" project (™). Licensed under the MIT License.
  */
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  signInWithEmailAndPassword as fbSignIn,
-  createUserWithEmailAndPassword as fbCreateUser,
-  sendEmailVerification as fbSendVerification,
-  signOut as fbSignOut,
-  onAuthStateChanged as fbAuthStateChanged,
-  User,
-  Auth,
-} from 'firebase/auth';
-import { auth, usingMockAuth } from '../lib/firebaseClient';
+import React, { createContext, useEffect, useState, useCallback } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { MockUser, MockAuth } from '../lib/mockAuthService';
+import { navigate } from '../navigation/AppNavigator';
+import { auth } from '../lib/firebase';
+import type { User, Auth } from 'firebase/auth';
 
-// Created a mock AsyncStorage for auth persistence that is Expo Go compatible
-const setupAuthPersistence = async () => {
-  try {
-    // Check if we have cached auth data
-    const authData = await AsyncStorage.getItem('auth_data');
-    if (authData) {
-      console.log('Found cached auth data');
-    }
-  } catch (error) {
-    console.error('Error loading cached auth data:', error);
-  }
+// Constants for AsyncStorage keys
+const ONBOARDING_COMPLETE_KEY = 'mowment_onboarding_complete';
+
+type AuthCtx = {
+  user: User | null;
+  isVerified: boolean;
+  isOnline: boolean;
+  refreshUserStatus: () => Promise<void>;
 };
 
-// Initialize auth persistence
-setupAuthPersistence();
-
-// Union type that works with both real Firebase User and our MockUser
-type AppUser = User | MockUser;
-
-type AuthContextType = {
-  user: AppUser | null;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<AppUser>;
-  signUp: (email: string, password: string) => Promise<AppUser>;
-  signOut: () => Promise<void>;
-  usingMockAuth: boolean;
-};
-
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthCtx>({ 
+  user: null, 
+  isVerified: false,
+  isOnline: true,
+  refreshUserStatus: async () => {}
+});
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean>(false);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  
+  // Monitor network connectivity
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
+      console.log('Network connectivity changed:', state.isConnected);
+      setIsOnline(!!state.isConnected);
+      
+      // Force refresh user status when coming back online
+      if (state.isConnected && auth.currentUser) {
+        refreshUserStatus();
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+  
+  // Function to manually refresh the user's verification status
+  const refreshUserStatus = useCallback(async () => {
+    console.log('Refreshing user status...');
+    
+    // Only throttle in production, not in development
+    if (!__DEV__) {
+      // Avoid excessive refreshes (throttle to once every 2 seconds)
+      const now = new Date();
+      if (now.getTime() - lastRefresh.getTime() < 2000) {
+        console.log('Refresh throttled, too soon since last refresh');
+        return;
+      }
+    }
+    
+    setLastRefresh(new Date());
+    
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        console.log('Current user found, reloading from server...');
+        await currentUser.reload();
+        
+        // Re-fetch after reload to get the latest data
+        const refreshedUser = auth.currentUser;
+        console.log('User reloaded, email verified:', refreshedUser?.emailVerified);
+        
+        if (refreshedUser && refreshedUser.emailVerified) {
+          setUser(refreshedUser);
+          setIsVerified(true);
+          await SecureStore.setItemAsync('uid', refreshedUser.uid);
+          console.log('Email verified, user is now verified in AuthContext');
+          
+          // Check if onboarding is complete, and navigate appropriately
+          const onboardingCompleted = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+          console.log('On verification, onboarding complete?', onboardingCompleted === 'true');
+          
+          // If we're coming from verification and onboarding is not complete, we'll show onboarding
+          // navigate() function will only work if the navigation container is ready
+        } else if (refreshedUser && !refreshedUser.emailVerified) {
+          setUser(refreshedUser);
+          setIsVerified(false);
+          await SecureStore.deleteItemAsync('uid');
+          console.log('Email not verified, keeping user as unverified in AuthContext');
+        }
+      } else {
+        console.log('No current user to refresh');
+      }
+    } catch (error) {
+      console.error('Failed to refresh user status:', error);
+      // Don't change state on error - just log it
+    }
+  }, [lastRefresh]);
 
   useEffect(() => {
     console.log('Setting up auth state listener...');
-    console.log('Using mock auth:', usingMockAuth ? 'Yes' : 'No');
+    let checkInterval: NodeJS.Timeout | null = null;
     
-    // Use the appropriate onAuthStateChanged based on which auth system we're using
-    let unsubscribe: () => void;
+    const authStateListener = auth.onAuthStateChanged(async (user) => {
+      console.log('Auth state changed, user:', user?.email, 'verified:', user?.emailVerified);
+      
+      if (user && user.emailVerified) {
+        // User is logged in and verified
+        console.log('User is verified, setting up AuthContext');
+        setUser(user);
+        setIsVerified(true);
+        await SecureStore.setItemAsync('uid', user.uid);
+        
+        // Clear any existing interval
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+          console.log('Cleared verification check interval');
+        }
+      } else if (user && !user.emailVerified) {
+        // User exists but email is not verified
+        console.log('User not verified, setting up verification checks');
+        setUser(user);
+        setIsVerified(false);
+        // Let's not store the uid in secure storage since they're not verified
+        await SecureStore.deleteItemAsync('uid');
+        
+        // Set up periodic verification checks more frequently
+        // Clear any existing interval first
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          console.log('Cleared previous verification check interval');
+        }
+        
+        console.log('Setting up new verification check interval');
+        checkInterval = setInterval(async () => {
+          if (isOnline) {
+            console.log('Running periodic verification check...');
+            await refreshUserStatus();
+          } else {
+            console.log('Skipping verification check while offline');
+          }
+        }, 5000); // Check every 5 seconds (more frequent)
+        
+        console.log('Verification check interval set up');
+      } else {
+        // No user
+        console.log('No user logged in');
+        setUser(null);
+        setIsVerified(false);
+        await SecureStore.deleteItemAsync('uid');
+        
+        // Clear any existing interval
+        if (checkInterval) {
+          clearInterval(checkInterval);
+          checkInterval = null;
+          console.log('Cleared verification check interval (no user)');
+        }
+      }
+    });
     
-    if (usingMockAuth) {
-      // Using mock auth
-      unsubscribe = (auth as MockAuth).onAuthStateChanged((currentUser) => {
-        console.log('Auth state changed (mock):', currentUser ? 'signed in' : 'signed out');
-        setUser(currentUser);
-        setLoading(false);
-      });
-    } else {
-      // Using Firebase auth
-      unsubscribe = fbAuthStateChanged(auth as Auth, (currentUser) => {
-        console.log('Auth state changed (Firebase):', currentUser ? 'signed in' : 'signed out');
-        setUser(currentUser);
-        setLoading(false);
-      });
-    }
-
-    return () => unsubscribe();
-  }, []);
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      console.log('Signing in user:', email);
-      
-      let userCredential;
-      
-      if (usingMockAuth) {
-        // Using mock auth
-        userCredential = await (auth as MockAuth).signInWithEmailAndPassword(email, password);
-      } else {
-        // Using Firebase auth
-        userCredential = await fbSignIn(auth as Auth, email, password);
+    // Also set up an initial check and a recurring check even when auth state doesn't change
+    const recurringCheck = setInterval(() => {
+      const currentUser = auth.currentUser;
+      if (currentUser && !currentUser.emailVerified && isOnline) {
+        console.log('Running additional verification check...');
+        refreshUserStatus();
       }
-      
-      // Cache the auth state in AsyncStorage for better persistence
-      try {
-        await AsyncStorage.setItem('auth_email', email);
-      } catch (error) {
-        console.error('Error caching auth data:', error);
+    }, 10000); // Every 10 seconds
+    
+    return () => {
+      console.log('Cleaning up auth state listener');
+      authStateListener();
+      if (checkInterval) {
+        clearInterval(checkInterval);
       }
-      
-      return userCredential.user;
-    } catch (error) {
-      console.error('Sign in error:', error);
-      throw error;
-    }
-  };
-
-  const signUp = async (email: string, password: string) => {
-    try {
-      console.log('Creating new user:', email);
-      
-      let userCredential;
-      
-      if (usingMockAuth) {
-        // Using mock auth
-        userCredential = await (auth as MockAuth).createUserWithEmailAndPassword(email, password);
-      } else {
-        // Using Firebase auth
-        userCredential = await fbCreateUser(auth as Auth, email, password);
-      }
-      
-      console.log('Sending verification email...');
-      
-      if (usingMockAuth) {
-        // Using mock auth
-        await (auth as MockAuth).sendEmailVerification(userCredential.user);
-      } else {
-        // Using Firebase auth
-        await fbSendVerification(userCredential.user as User);
-      }
-      
-      return userCredential.user;
-    } catch (error) {
-      console.error('Sign up error:', error);
-      throw error;
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      console.log('Signing out user...');
-      
-      if (usingMockAuth) {
-        // Using mock auth
-        await (auth as MockAuth).signOut();
-      } else {
-        // Using Firebase auth
-        await fbSignOut(auth as Auth);
-      }
-      
-      // Clear cached auth data
-      try {
-        await AsyncStorage.removeItem('auth_email');
-      } catch (error) {
-        console.error('Error clearing cached auth data:', error);
-      }
-    } catch (error) {
-      console.error('Sign out error:', error);
-      throw error;
-    }
-  };
+      clearInterval(recurringCheck);
+    };
+  }, [refreshUserStatus, isOnline]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, usingMockAuth }}>
+    <AuthContext.Provider value={{ user, isVerified, isOnline, refreshUserStatus }}>
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }; 

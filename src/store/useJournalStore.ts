@@ -7,7 +7,8 @@ import { create } from 'zustand';
 import { MonthlyReport, MoodAnalysis, EmotionTrend } from '../api/openai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import NetInfo from '@react-native-community/netinfo';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+import { auth, db, canPerformWrite, safeFirebaseOperation } from '../lib/firebase';
 
 export type Emotion = {
   label: string;
@@ -81,6 +82,11 @@ interface JournalState {
   incrementMonthlyAnalysisCount: () => void;
   setLastMonthlyAnalysisMonth: (month: string) => void;
   
+  // Sync entries with Firestore
+  syncEntriesWithFirestore: (userId: string) => Promise<boolean>;
+  syncMoodsWithFirestore: (userId: string) => Promise<boolean>;
+  syncErasWithFirestore: (userId: string) => Promise<boolean>;
+  loadDataFromFirestore: (userId: string) => Promise<boolean>;
   lastSynced: number | null;
 }
 
@@ -220,137 +226,290 @@ export const globalLimits = {
   }
 };
 
-// Create and export the Zustand store
-const useJournalStore = create<JournalState>()(
+// Create the store with persistence
+export const useJournalStore = create<JournalState>()(
   persist(
     (set, get) => ({
-      // Initial state
-      entries: demoEntries,
+      // Journal entries state
+      entries: mockEntries,
+      addEntry: (entry) => {
+        const newEntry = {
+            ...entry,
+            id: Date.now().toString(),
+            createdAt: Date.now(),
+        };
+
+        set((state) => ({
+          entries: [newEntry, ...state.entries],
+        }));
+
+        // Only back up text entries to Firestore
+        if (newEntry.type === 'text' && auth.currentUser && canPerformWrite()) {
+          const userId = auth.currentUser.uid;
+          const entryDoc = doc(db, `users/${userId}/entries/${newEntry.id}`);
+          safeFirebaseOperation(() => 
+            setDoc(entryDoc, {
+              id: newEntry.id,
+              createdAt: newEntry.createdAt,
+              type: newEntry.type,
+              content: newEntry.content,
+              tags: newEntry.tags || [],
+              mood: newEntry.mood || null
+            })
+          );
+        }
+      },
+      addVoiceEntry: (audioUri, transcript) => set(s => ({
+        entries: [{
+          id: Date.now().toString(),
+          createdAt: Date.now(),
+          type: 'voice',
+          uri: audioUri,
+          content: transcript,
+          tags: [],
+        }, ...s.entries]
+      })),
+      addMediaEntry: (photoUri, caption, mood, tags = []) => set(s => ({
+        entries: [{
+          id: Date.now().toString(),
+          createdAt: Date.now(),
+          type: 'media',
+          uri: photoUri,
+          content: caption,
+          mood,
+          tags
+        }, ...s.entries]
+      })),
+      removeEntry: (id) => {
+        set(state => ({
+        entries: state.entries.filter(entry => entry.id !== id)
+        }));
+        
+        // If user is authenticated, also delete from Firestore
+        if (auth.currentUser && canPerformWrite()) {
+          const userId = auth.currentUser.uid;
+          const entryDoc = doc(db, `users/${userId}/entries/${id}`);
+          safeFirebaseOperation(() => setDoc(entryDoc, { deleted: true }, { merge: true }));
+        }
+      },
+      
+      // Moods tracking over time
       moods: generateMockMoods(),
+      
+      // Settings state
       settings: {
         darkMode: false,
         language: 'en',
-        reminders: true,
+        reminders: false,
         reminderTime: '20:00',
-        cloudBackup: false,
+        cloudBackup: true,
       },
+      setSettings: (settings) => set(s => ({
+        settings: {
+          ...s.settings,
+          ...settings
+        }
+      })),
+      
+      // Life Eras
       eras: [],
+      setEras: (newEras) => {
+        const formattedEras = newEras.map(era => ({
+          ...era,
+          generatedAt: Date.now(),
+          isExpanded: false
+        }));
+        
+        set(() => ({ eras: formattedEras }));
+        
+        // Sync eras to Firestore
+        const state = get();
+        if (auth.currentUser) {
+          state.syncErasWithFirestore(auth.currentUser.uid);
+        }
+      },
+      addEras: (newEras) => {
+        const formattedEras = newEras.map(era => ({
+            ...era,
+            generatedAt: Date.now(),
+            isExpanded: false
+        }));
+        
+        set(state => ({ 
+          eras: [...formattedEras, ...state.eras]
+        }));
+        
+        // Sync eras to Firestore
+        const state = get();
+        if (auth.currentUser) {
+          state.syncErasWithFirestore(auth.currentUser.uid);
+        }
+      },
+      toggleEraExpanded: (eraIndex) => set(state => ({
+        eras: state.eras.map((era, index) => 
+          index === eraIndex ? { ...era, isExpanded: !era.isExpanded } : era
+        )
+      })),
       lastEraGeneration: 0,
-      monthlyReports: { [currentMonth]: mockMonthlyReport },
+      setLastEraGeneration: (timestamp) => set(() => ({ lastEraGeneration: timestamp })),
+      
+      // Monthly reports state
+      monthlyReports: {},
+      addMonthlyReport: (month, report) => set(state => ({
+        monthlyReports: {
+          ...state.monthlyReports,
+          [month]: report
+        }
+      })),
+      
+      // Monthly mood analysis
       moodAnalysis: {},
+      addMoodAnalysis: (month, analysis) => set(state => ({
+        moodAnalysis: {
+          ...state.moodAnalysis,
+          [month]: analysis
+        }
+      })),
+      
+      // Analysis tracking
       monthlyAnalysisCount: 0,
       lastMonthlyAnalysisMonth: '',
-      lastSynced: null,
-
-      // Methods for entries
-      addEntry: (entry) => {
-        const id = Date.now().toString();
-        const newEntry = { ...entry, id, createdAt: Date.now() };
-        set((state) => ({ entries: [newEntry, ...state.entries] }));
-      },
+      incrementMonthlyAnalysisCount: () => set(s => ({ monthlyAnalysisCount: s.monthlyAnalysisCount + 1 })),
+      setLastMonthlyAnalysisMonth: (month) => set(() => ({ 
+        lastMonthlyAnalysisMonth: month,
+        // Reset counter if it's a new month
+        monthlyAnalysisCount: get().lastMonthlyAnalysisMonth === month ? get().monthlyAnalysisCount : 0
+      })),
       
-      addVoiceEntry: (audioUri, transcript) => {
-        const id = Date.now().toString();
-        const newEntry = { 
-          id, 
-          createdAt: Date.now(),
-          type: 'voice' as const,
-          content: transcript,
-          uri: audioUri,
-          tags: ['voice']
-        };
-        set((state) => ({ entries: [newEntry, ...state.entries] }));
-      },
-      
-      addMediaEntry: (photoUri, caption, mood, tags = []) => {
-        const id = Date.now().toString();
-        const newEntry = { 
-          id, 
-          createdAt: Date.now(),
-          type: 'media' as const,
-          content: caption,
-          uri: photoUri,
-          mood,
-          tags: [...tags, 'photo']
-        };
-        set((state) => ({ entries: [newEntry, ...state.entries] }));
-      },
-      
-      removeEntry: (id) => {
-        set((state) => ({
-          entries: state.entries.filter((entry) => entry.id !== id)
-        }));
-      },
-      
-      // Methods for settings
-      setSettings: (newSettings) => {
-        set((state) => ({
-          settings: { ...state.settings, ...newSettings }
-        }));
-      },
-      
-      // Methods for life eras
-      setEras: (newEras) => {
-        const erasWithMetadata = newEras.map(era => ({
-          ...era,
-          generatedAt: Date.now(),
-          isExpanded: false
-        }));
-        set({ eras: erasWithMetadata });
-      },
-      
-      addEras: (newEras) => {
-        const erasWithMetadata = newEras.map(era => ({
-          ...era,
-          generatedAt: Date.now(),
-          isExpanded: false
-        }));
-        set((state) => ({ 
-          eras: [...state.eras, ...erasWithMetadata] 
-        }));
-      },
-      
-      toggleEraExpanded: (eraIndex) => {
-        set((state) => {
-          const updatedEras = [...state.eras];
-          if (updatedEras[eraIndex]) {
-            updatedEras[eraIndex] = {
-              ...updatedEras[eraIndex],
-              isExpanded: !updatedEras[eraIndex].isExpanded
-            };
+      // Sync entries with Firestore
+      syncEntriesWithFirestore: async (userId: string) => {
+        if (auth.currentUser && userId) {
+          try {
+            // Get current entries from state
+            const { entries } = get();
+            
+            // Only sync text entries to Firestore
+            const textEntries = entries.filter(entry => entry.type === 'text');
+            
+            // Use batched writes for efficiency
+            const batch = writeBatch(db);
+            
+            // Add each text entry to the batch
+            textEntries.forEach((entry) => {
+              const entryRef = doc(db, `users/${userId}/entries/${entry.id}`);
+              batch.set(entryRef, entry);
+            });
+            
+            // Commit the batch
+            await batch.commit();
+            
+            // Update last synced timestamp
+            set({ lastSynced: Date.now() });
+            
+            console.log('Successfully synced entries with Firestore');
+            return true;
+          } catch (error) {
+            console.error('Error syncing entries with Firestore:', error);
+            return false;
           }
-          return { eras: updatedEras };
-        });
+        }
+        return false;
       },
       
-      setLastEraGeneration: (timestamp) => {
-        set({ lastEraGeneration: timestamp });
+      // Sync moods with Firestore
+      syncMoodsWithFirestore: async (userId: string) => {
+        if (auth.currentUser && userId) {
+          try {
+            // Get current moods from store
+            const { moods } = get();
+            
+            // Upload to Firestore
+            await setDoc(doc(db, `users/${userId}/data`, 'moods'), { moods });
+            console.log('Moods synced with Firestore');
+            return true;
+          } catch (error) {
+            console.error('Error syncing moods with Firestore:', error);
+            return false;
+          }
+        }
+        return false;
       },
       
-      // Methods for monthly reports
-      addMonthlyReport: (month, report) => {
-        set((state) => ({
-          monthlyReports: { ...state.monthlyReports, [month]: report }
-        }));
+      // Sync eras with Firestore
+      syncErasWithFirestore: async (userId: string) => {
+        if (auth.currentUser && userId) {
+          try {
+            // Get current eras from store
+            const { eras } = get();
+            
+            // Upload to Firestore
+            await setDoc(doc(db, `users/${userId}/data`, 'eras'), { eras });
+            console.log('Eras synced with Firestore');
+            return true;
+          } catch (error) {
+            console.error('Error syncing eras with Firestore:', error);
+            return false;
+          }
+        }
+        return false;
       },
       
-      // Methods for mood analysis
-      addMoodAnalysis: (month, analysis) => {
-        set((state) => ({
-          moodAnalysis: { ...state.moodAnalysis, [month]: analysis }
-        }));
+      // Load data from Firestore
+      loadDataFromFirestore: async (userId: string) => {
+        try {
+          // Load text entries
+          const entriesCollection = collection(db, `users/${userId}/entries`);
+          const entriesSnapshot = await getDocs(entriesCollection);
+          const cloudEntries: Entry[] = [];
+          
+          entriesSnapshot.forEach((doc) => {
+            const entry = doc.data() as Entry;
+            cloudEntries.push(entry);
+          });
+          
+          // Load moods
+          const moodsDoc = doc(db, `users/${userId}/data`, 'moods');
+          const moodsSnapshot = await getDoc(moodsDoc);
+          let cloudMoods: Emotion[] = [];
+          
+          if (moodsSnapshot.exists()) {
+            cloudMoods = moodsSnapshot.data().moods as Emotion[];
+          }
+          
+          // Load eras
+          const erasDoc = doc(db, `users/${userId}/data`, 'eras');
+          const erasSnapshot = await getDoc(erasDoc);
+          let cloudEras: Era[] = [];
+          
+          if (erasSnapshot.exists()) {
+            cloudEras = erasSnapshot.data().eras;
+          }
+          
+          // Get current local data
+          const currentEntries = get().entries;
+          
+          // Merge cloud and local data
+          // Keep local media/voice entries, replace text entries with cloud version
+          const localMediaEntries = currentEntries.filter(entry => entry.type !== 'text');
+          const mergedEntries = [...cloudEntries, ...localMediaEntries];
+          
+          // Update store with cloud data
+          set({
+            entries: mergedEntries,
+            moods: cloudMoods.length > 0 ? cloudMoods : get().moods,
+            eras: cloudEras.length > 0 ? cloudEras : get().eras,
+            lastSynced: Date.now()
+          });
+          
+          console.log('Successfully loaded data from Firestore');
+          return true;
+        } catch (error) {
+          console.error('Error loading data from Firestore:', error);
+          return false;
+        }
       },
       
-      // Methods for tracking monthly analysis
-      incrementMonthlyAnalysisCount: () => {
-        set((state) => ({
-          monthlyAnalysisCount: state.monthlyAnalysisCount + 1
-        }));
-      },
-      
-      setLastMonthlyAnalysisMonth: (month) => {
-        set({ lastMonthlyAnalysisMonth: month });
-      },
+      lastSynced: null,
     }),
     {
       name: 'journal-storage',
@@ -359,4 +518,87 @@ const useJournalStore = create<JournalState>()(
   )
 );
 
-export default useJournalStore; 
+// Initialize sync from Firestore when auth state changes
+auth.onAuthStateChanged((user) => {
+  if (user && user.emailVerified) {
+    const store = useJournalStore.getState();
+    store.syncEntriesWithFirestore(user.uid);
+    
+    // Also set up listeners for future changes if needed
+    // This is optional and depends on your app's requirements
+  }
+});
+
+// Fix the selectors and helpers with proper function structure
+export const selectEntries = (s: JournalState) => s.entries; 
+
+// Fix the helper functions by using useJournalStore.getState() and useJournalStore.setState()
+export const addMood = (mood: Emotion, userId?: string) => {
+  const state = useJournalStore.getState();
+  const newMoods = [...state.moods, mood];
+  useJournalStore.setState({ moods: newMoods });
+  
+  // If userId is provided and cloud backup is enabled, sync moods
+  if (userId && state.settings.cloudBackup) {
+    state.syncMoodsWithFirestore(userId);
+  }
+};
+
+// Fix the removeMood method to trigger sync
+export const removeMood = (id: string, userId?: string) => {
+  const state = useJournalStore.getState();
+  const filteredMoods = state.moods.filter(mood => mood.label !== id);
+  useJournalStore.setState({ moods: filteredMoods });
+  
+  // If userId is provided and cloud backup is enabled, sync moods
+  if (userId && state.settings.cloudBackup) {
+    state.syncMoodsWithFirestore(userId);
+  }
+};
+
+// Fix the addEra method to trigger sync
+export const addEra = (era: Era, userId?: string) => {
+  const state = useJournalStore.getState();
+  const newEras = [...state.eras, era];
+  useJournalStore.setState({ eras: newEras });
+  
+  // If userId is provided and cloud backup is enabled, sync eras
+  if (userId && state.settings.cloudBackup) {
+    state.syncErasWithFirestore(userId);
+  }
+};
+
+// Fix the removeEra method to trigger sync
+export const removeEra = (id: string, userId?: string) => {
+  const state = useJournalStore.getState();
+  const filteredEras = state.eras.filter(era => era.id !== id);
+  useJournalStore.setState({ eras: filteredEras });
+  
+  // If userId is provided and cloud backup is enabled, sync eras
+  if (userId && state.settings.cloudBackup) {
+    state.syncErasWithFirestore(userId);
+  }
+};
+
+// Fix the updateEra method to trigger sync
+export const updateEra = (id: string, updatedEra: Partial<Era>, userId?: string) => {
+  const state = useJournalStore.getState();
+  const updatedEras = state.eras.map(era => 
+    era.id === id ? { ...era, ...updatedEra } : era
+  );
+  useJournalStore.setState({ eras: updatedEras });
+  
+  // If userId is provided and cloud backup is enabled, sync eras
+  if (userId && state.settings.cloudBackup) {
+    state.syncErasWithFirestore(userId);
+  }
+};
+
+// Fix subscription to handle null correctly
+useJournalStore.subscribe((state, prevState) => {
+  const user = auth.currentUser;
+  if (user && user.emailVerified) {
+    const store = useJournalStore.getState();
+    store.syncEntriesWithFirestore(user.uid);
+  }
+}); 

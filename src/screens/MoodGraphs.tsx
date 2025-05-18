@@ -1,3 +1,8 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, Platform, Alert } from 'react-native';
 import { Text, useTheme, ActivityIndicator, Chip, ProgressBar, Card, Avatar, Button } from 'react-native-paper';

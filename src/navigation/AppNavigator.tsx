@@ -3,12 +3,13 @@
  * This file is part of the "Mowment" project (™). Licensed under the MIT License.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import WelcomeScreen from '../screens/Welcome';
 import OnboardingScreen from '../screens/Onboarding';
+import PasskeyScreen from '../screens/Passkey';
 import DashboardScreen from '../screens/Dashboard';
 import TextEntryScreen from '../screens/TextEntry';
 import VoiceEntryScreen from '../screens/VoiceEntry';
@@ -22,6 +23,10 @@ import JournalListScreen from '../screens/JournalList';
 import EntryDetailScreen from '../screens/EntryDetail';
 import MonthlyCheckupScreen from '../screens/MonthlyCheckup';
 import ChatBotScreen from '../screens/ChatBot';
+import SignUpScreen from '../screens/Auth/SignUpScreen';
+import LoginScreen from '../screens/Auth/LoginScreen';
+import VerifyEmailScreen from '../screens/Auth/VerifyEmailScreen';
+import { AuthContext } from '../contexts/AuthContext';
 import * as Haptics from 'expo-haptics';
 
 // Constants for AsyncStorage keys
@@ -43,8 +48,14 @@ export function navigate(name: keyof RootStackParamList, params?: any) {
 export type RootStackParamList = {
   // Onboarding Stack
   Onboarding: undefined;
-  Welcome: undefined;
   
+  // Auth Stack
+  Welcome: undefined;
+  Login: undefined;
+  SignUp: undefined;
+  VerifyEmail: { email: string };
+  Passkey: undefined;
+
   // Main App Stack
   Dashboard: undefined;
   TextEntry: undefined;
@@ -63,7 +74,8 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-const AppNavigator = () => {
+// Auth stack for unauthenticated users
+const AuthStack = () => {
   const [isOnboardingComplete, setIsOnboardingComplete] = useState<boolean | null>(null);
   
   // Check if the user has completed onboarding
@@ -87,13 +99,73 @@ const AppNavigator = () => {
     return null; // Or a loading spinner
   }
   
-  // Use a single navigator with all screens, but change the initial route based on onboarding status
-  const initialRoute = isOnboardingComplete ? "Dashboard" : "Onboarding";
-  console.log(`Using initial route: ${initialRoute}`);
-  
   return (
     <Stack.Navigator
-      initialRouteName={initialRoute}
+      initialRouteName={isOnboardingComplete ? "Welcome" : "Onboarding"}
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: '#F9F6F2' },
+      }}
+    >
+      <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+      <Stack.Screen name="Welcome" component={WelcomeScreen} />
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="SignUp" component={SignUpScreen} />
+      <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+      <Stack.Screen name="Passkey" component={PasskeyScreen} />
+    </Stack.Navigator>
+  );
+};
+
+// Main app navigation stack
+const MainAppStack = () => {
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState<boolean | null>(null);
+  
+  // Check if the user has completed onboarding
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      try {
+        const onboardingCompleted = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        const needsOnboarding = onboardingCompleted !== 'true';
+        setIsOnboardingComplete(!needsOnboarding);
+        console.log('MainAppStack - Onboarding complete?', !needsOnboarding);
+        console.log('MainAppStack - Onboarding value in storage:', onboardingCompleted);
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        setIsOnboardingComplete(false);
+      }
+    };
+    
+    checkOnboardingStatus();
+  }, []);
+  
+  // Show loading state while checking onboarding status
+  if (isOnboardingComplete === null) {
+    return null; // Or a loading spinner
+  }
+  
+  // If onboarding is not complete, show the onboarding screen first
+  if (!isOnboardingComplete) {
+    console.log('MainAppStack showing Onboarding screen as first route');
+    return (
+      <Stack.Navigator
+        initialRouteName="Onboarding"
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: '#F9F6F2' },
+        }}
+      >
+        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+        <Stack.Screen name="Dashboard" component={DashboardScreen} />
+      </Stack.Navigator>
+    );
+  }
+  
+  // Otherwise show the normal app stack
+  console.log('MainAppStack showing main app routes with Dashboard as initial route');
+  return (
+    <Stack.Navigator
+      initialRouteName="Dashboard"
       screenOptions={{
         headerShown: true,
         gestureEnabled: true,
@@ -112,31 +184,34 @@ const AppNavigator = () => {
         headerBackVisible: true,
         headerShadowVisible: false,
         headerBackButtonMenuEnabled: true,
+        headerLeft: ({ canGoBack }) => 
+          canGoBack 
+            ? undefined  // Use default back button
+            : null,      // No back button for screens that can't go back
       }}
       screenListeners={{
         state: (e) => {
           const currentRouteName = e.data?.state?.routes[e.data.state.index]?.name;
-          const currentRouteParams = e.data?.state?.routes[e.data.state.index]?.params;
-          console.log(`Current route: ${currentRouteName} (index: ${e.data?.state?.index})`);
-          console.log(`Current route params: ${currentRouteParams ? JSON.stringify(currentRouteParams) : 'none'}`);
-          console.log(`Available routes: ${e.data?.state?.routeNames.join(', ')}`);
-        }
+          console.log(`Current screen: ${currentRouteName}`);
+          console.log('Navigation state change event:', JSON.stringify(e.data?.state));
+        },
+        focus: (e) => {
+          console.log(`Screen focused: ${e.target}`);
+        },
+        beforeRemove: (e) => {
+          console.log(`Screen about to be removed: ${e.target}`);
+        },
+        blur: (e) => {
+          console.log(`Screen blurred: ${e.target}`);
+        },
+        transitionStart: (e) => {
+          console.log(`Screen transition started to: ${e.target}`);
+        },
+        transitionEnd: (e) => {
+          console.log(`Screen transition completed to: ${e.target}`);
+        },
       }}
     >
-      {/* Onboarding */}
-      <Stack.Screen 
-        name="Onboarding" 
-        component={OnboardingScreen}
-        options={{ headerShown: false }}
-      />
-      
-      <Stack.Screen 
-        name="Welcome" 
-        component={WelcomeScreen}
-        options={{ headerShown: false }}
-      />
-      
-      {/* Main screens */}
       <Stack.Screen 
         name="Dashboard" 
         component={DashboardScreen} 
@@ -199,20 +274,30 @@ const AppNavigator = () => {
       <Stack.Screen 
         name="EntryDetail" 
         component={EntryDetailScreen} 
-        options={{ title: "Entry Details" }}
+        options={{ title: "Entry Detail" }}
       />
       <Stack.Screen 
         name="MonthlyCheckup" 
         component={MonthlyCheckupScreen} 
-        options={{ title: "Monthly Checkup" }}
+        options={{ title: "Monthly Review" }}
       />
       <Stack.Screen 
         name="ChatBot" 
         component={ChatBotScreen} 
-        options={{ title: "AI Journal Assistant" }}
+        options={{ title: "Mo-ment Companion" }}
       />
     </Stack.Navigator>
   );
+};
+
+// Main App Navigator
+const AppNavigator: React.FC = () => {
+  const { user, isVerified } = useContext(AuthContext);
+  
+  console.log('Current auth state:', user ? 'User is logged in' : 'No user logged in');
+  console.log('Email verified:', isVerified ? 'Yes' : 'No');
+  
+  return user && isVerified ? <MainAppStack /> : <AuthStack />;
 };
 
 export default AppNavigator; 

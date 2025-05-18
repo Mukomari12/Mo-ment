@@ -17,20 +17,30 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Mo-ment"
+      "bundleIdentifier": "com.anonymous.MowmentDemo",
+      "googleServicesFile": "./GoogleService-Info.plist"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/branding/logo_1024.png",
         "backgroundColor": "#fdfbf9"
       },
-      "package": "com.anonymous.Mo-ment"
+      "package": "com.mohammadmuqtader.mowment",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/branding/logo_1024.png"
     },
     "plugins": [
-      "expo-font"
-    ]
+      "expo-font",
+      "expo-secure-store"
+    ],
+    "prebuildConfig": {
+      "ios": {
+        "splashScreen": {
+          "useCustomSplashScreen": true
+        }
+      }
+    }
   }
 }

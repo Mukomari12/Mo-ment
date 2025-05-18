@@ -8,7 +8,7 @@ import { enableScreens } from 'react-native-screens';
 enableScreens();
 import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
-import { Provider as PaperProvider } from 'react-native-paper';
+import { Provider as PaperProvider, Portal } from 'react-native-paper';
 import AppNavigator, { navigationRef } from './src/navigation/AppNavigator';
 import { theme } from './src/theme/mo-mentTheme';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +26,7 @@ import {
   WorkSans_600SemiBold
 } from '@expo-google-fonts/work-sans';
 import { View, ActivityIndicator, Text } from 'react-native';
+import { AuthProvider } from './src/contexts/AuthContext';
 
 export default function App() {
   console.log("App component started");
@@ -74,6 +75,7 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <PaperProvider theme={theme}>
+          <AuthProvider>
           <BottomSheetModalProvider>
             <NavigationContainer 
               ref={navigationRef} 
@@ -100,6 +102,7 @@ export default function App() {
               <AppNavigator />
             </NavigationContainer>
           </BottomSheetModalProvider>
+          </AuthProvider>
         </PaperProvider>
       </GestureHandlerRootView>
     );

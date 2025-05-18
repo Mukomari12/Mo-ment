@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useContext } from 'react';
 import { View, FlatList, StyleSheet, Dimensions, TouchableOpacity, Image, SafeAreaView } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext } from '../contexts/AuthContext';
 
 // Constants for AsyncStorage keys
 const ONBOARDING_COMPLETE_KEY = 'mowment_onboarding_complete';
@@ -39,6 +40,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const screenWidth = Dimensions.get('window').width;
+  const { user, isVerified } = useContext(AuthContext);
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
@@ -50,7 +52,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
     itemVisiblePercentThreshold: 50,
   }).current;
 
-  // Skip onboarding and navigate to Welcome
+  // Skip onboarding and navigate to Welcome or Dashboard
   const skipOnboarding = async () => {
     try {
       // Store that onboarding is complete
@@ -60,19 +62,34 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
       // Navigate with subtle haptic feedback
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       
-      // Navigate to Welcome screen
-      console.log('Navigating to Welcome');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
+      // Choose destination based on auth state
+      if (user && isVerified) {
+        console.log('User is logged in and verified, navigating to Dashboard');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      } else {
+        console.log('User is not logged in or not verified, navigating to Welcome');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Welcome' }],
+        });
+      }
     } catch (error) {
       console.error('Error saving onboarding status:', error);
       // Navigate anyway in case of error
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
+      if (user && isVerified) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Welcome' }],
+        });
+      }
     }
   };
 
@@ -83,21 +100,36 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
       await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
       console.log('Onboarding marked as COMPLETE in AsyncStorage');
       
-      // Navigate to Welcome screen
+      // Navigate to appropriate screen based on auth state
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      console.log('Navigating to Welcome');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
+      if (user && isVerified) {
+        console.log('User is logged in and verified, navigating to Dashboard');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      } else {
+        console.log('User is not logged in or not verified, navigating to Welcome');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Welcome' }],
+        });
+      }
     } catch (error) {
       console.error('Error saving onboarding status:', error);
       // Navigate anyway in case of error
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      });
+      if (user && isVerified) {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard' }],
+        });
+      } else {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Welcome' }],
+        });
+      }
     }
   };
 

@@ -1,3 +1,4 @@
+// @ts-ignore - Module '@env' is defined via babel plugin
 import { OPENAI_API_KEY } from '@env';
 import { Entry } from '../store/useJournalStore';
 import * as FileSystem from 'expo-file-system';

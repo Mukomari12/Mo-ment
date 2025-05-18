@@ -16,7 +16,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import useJournalStore, { type Entry } from '../store/useJournalStore';
+import { useJournalStore, Entry } from '../store/useJournalStore';
 import EntryCard from '../components/EntryCard';
 import * as Haptics from 'expo-haptics';
 import { devLog } from '../utils/devLog';

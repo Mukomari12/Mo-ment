@@ -1,3 +1,8 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Image, Platform, TouchableOpacity, Alert, KeyboardAvoidingView, Keyboard, SafeAreaView } from 'react-native';
 import { TextInput, IconButton, Chip, useTheme, Text as PaperText, ActivityIndicator, Snackbar, Portal, Modal, Button } from 'react-native-paper';

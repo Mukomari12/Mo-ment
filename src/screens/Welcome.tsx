@@ -4,31 +4,18 @@
  */
 
 import React from 'react';
-import { View, StyleSheet, Image, SafeAreaView } from 'react-native';
+import { View, StyleSheet, Image, SafeAreaView, Dimensions } from 'react-native';
 import { Text, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type WelcomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
 };
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
-  const handleGetStarted = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    try {
-      // Mark onboarding as complete
-      await AsyncStorage.setItem('mowment_onboarding_complete', 'true');
-      // Navigate to dashboard
-      navigation.navigate('Dashboard');
-    } catch (error) {
-      console.error('Error saving onboarding status:', error);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient
@@ -52,12 +39,28 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
           <View style={styles.buttonContainer}>
           <Button 
             mode="contained" 
-            onPress={handleGetStarted}
-            style={styles.startButton}
-            contentStyle={styles.buttonContent}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                navigation.navigate('Login');
+              }}
+              style={styles.loginButton}
+              contentStyle={styles.buttonContent}
             labelStyle={styles.buttonLabel}
+            >
+              Login
+            </Button>
+            
+            <Button
+              mode="outlined"
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                navigation.navigate('SignUp');
+              }}
+              style={styles.signupButton}
+            contentStyle={styles.buttonContent}
+              labelStyle={styles.signupLabel}
           >
-            Get Started
+              Create Account
           </Button>
           </View>
         </View>
@@ -114,7 +117,7 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 40,
   },
-  startButton: {
+  loginButton: {
     marginBottom: 16,
     borderRadius: 12,
     backgroundColor: '#b58a65',
@@ -124,11 +127,23 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  signupButton: {
+    backgroundColor: 'transparent',
+    borderColor: '#b58a65',
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
   buttonContent: {
     height: 56,
     width: '100%',
   },
   buttonLabel: {
+    fontSize: 16,
+    fontFamily: 'WorkSans_500Medium',
+    letterSpacing: 0.5,
+  },
+  signupLabel: {
+    color: '#b58a65',
     fontSize: 16,
     fontFamily: 'WorkSans_500Medium',
     letterSpacing: 0.5,

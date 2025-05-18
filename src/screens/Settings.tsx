@@ -3,9 +3,13 @@
  * This file is part of the "Mowment" project (™). Licensed under the MIT License.
  */
 
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, SafeAreaView, Alert, TouchableOpacity } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, StyleSheet, ScrollView, SafeAreaView, Alert, TouchableOpacity, Image } from 'react-native';
 import { Text, Divider, Switch, Button, Avatar, IconButton, useTheme } from 'react-native-paper';
+import { signOut } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
+import { AuthContext } from '../contexts/AuthContext';
+import { doc, getDoc } from 'firebase/firestore';
 import * as Haptics from 'expo-haptics';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -15,22 +19,70 @@ type SettingsScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Settings'>;
 };
 
+type UserProfile = {
+  fullName: string;
+  email: string;
+  createdAt: any;
+  birthday: any;
+  photoURL?: string;
+};
+
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
+  const { user } = useContext(AuthContext);
   const theme = useTheme();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = useState(false);
-  const [cloudBackupEnabled, setCloudBackupEnabled] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  // Placeholder user info
-  const userInfo = {
-    fullName: 'Demo User',
-    email: 'demo@example.com'
+  useEffect(() => {
+    fetchUserProfile();
+  }, [user]);
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      setDataLoading(true);
+      const profileRef = doc(db, 'profiles', user.uid);
+      const profileSnapshot = await getDoc(profileRef);
+      
+      if (profileSnapshot.exists()) {
+        setProfile(profileSnapshot.data() as UserProfile);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await signOut(auth);
+      // Navigation will be handled by AuthContext
+    } catch (error) {
+      console.error('Logout error:', error);
+      Alert.alert('Logout Failed', 'Please try again.');
+    }
+  };
+
+  const confirmLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', onPress: handleLogout, style: 'destructive' }
+      ]
+    );
   };
 
   // Get user initials for avatar fallback
   const getInitials = () => {
-    if (!userInfo.fullName) return '?';
-    return userInfo.fullName
+    if (!profile?.fullName) return '?';
+    return profile.fullName
       .split(' ')
       .map(name => name[0])
       .join('')
@@ -43,12 +95,20 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
         {/* Profile Section */}
         <View style={styles.profileSection}>
           <View style={styles.avatarContainer}>
-            <Avatar.Text 
-              label={getInitials()} 
-              size={80} 
-              style={styles.avatar}
-              labelStyle={styles.avatarLabel}
-            />
+            {profile?.photoURL ? (
+              <Avatar.Image 
+                source={{ uri: profile.photoURL }} 
+                size={80} 
+                style={styles.avatar} 
+              />
+            ) : (
+              <Avatar.Text 
+                label={getInitials()} 
+                size={80} 
+                style={styles.avatar}
+                labelStyle={styles.avatarLabel}
+              />
+            )}
             <IconButton
               icon="camera"
               mode="contained"
@@ -58,10 +118,10 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               onPress={() => Alert.alert('Coming Soon', 'Profile photo uploads will be available soon!')}
               style={styles.editAvatarButton}
             />
-          </View>
+            </View>
           
-          <Text style={styles.profileName}>{userInfo.fullName}</Text>
-          <Text style={styles.profileEmail}>{userInfo.email}</Text>
+          <Text style={styles.profileName}>{profile?.fullName || 'User'}</Text>
+          <Text style={styles.profileEmail}>{profile?.email || user?.email || 'No email'}</Text>
           
           <TouchableOpacity 
             style={styles.editProfileButton}
@@ -82,11 +142,11 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
               <MaterialCommunityIcons name="bell-outline" size={24} color="#b58a65" />
               <Text style={styles.settingLabel}>Notifications</Text>
             </View>
-            <Switch
+              <Switch
               value={notificationsEnabled}
               onValueChange={setNotificationsEnabled}
               color="#b58a65"
-            />
+              />
           </View>
           
           <View style={styles.settingItem}>
@@ -97,18 +157,6 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             <Switch 
               value={darkModeEnabled}
               onValueChange={setDarkModeEnabled}
-              color="#b58a65"
-            />
-          </View>
-
-          <View style={styles.settingItem}>
-            <View style={styles.settingInfo}>
-              <MaterialCommunityIcons name="cloud-upload-outline" size={24} color="#b58a65" />
-              <Text style={styles.settingLabel}>Cloud Backup</Text>
-            </View>
-            <Switch 
-              value={cloudBackupEnabled}
-              onValueChange={setCloudBackupEnabled}
               color="#b58a65"
             />
           </View>
@@ -159,6 +207,17 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             </View>
             <MaterialCommunityIcons name="chevron-right" size={24} color="#b58a65" />
           </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.navigationItem}
+            onPress={() => Alert.alert('Coming Soon', 'Account deletion will be available soon!')}
+          >
+            <View style={styles.settingInfo}>
+              <MaterialCommunityIcons name="account-remove-outline" size={24} color="#e74c3c" />
+              <Text style={[styles.settingLabel, { color: '#e74c3c' }]}>Delete Account</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={24} color="#e74c3c" />
+          </TouchableOpacity>
         </View>
           
         <Divider style={styles.divider} />
@@ -191,6 +250,17 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             <MaterialCommunityIcons name="chevron-right" size={24} color="#b58a65" />
           </TouchableOpacity>
         </View>
+        
+        {/* Logout Button */}
+        <Button
+          mode="outlined"
+          onPress={confirmLogout}
+          style={styles.logoutButton}
+          textColor="#e74c3c"
+          labelStyle={styles.logoutButtonText}
+        >
+          Logout
+        </Button>
         
         <Text style={styles.versionText}>Version 1.0.0</Text>
       </ScrollView>
@@ -284,14 +354,21 @@ const styles = StyleSheet.create({
     color: '#3d2f28',
     marginLeft: 12,
   },
+  logoutButton: {
+    margin: 24,
+    borderColor: '#e74c3c',
+    borderWidth: 1,
+  },
+  logoutButtonText: {
+    fontFamily: 'WorkSans_500Medium',
+  },
   versionText: {
     textAlign: 'center',
     color: '#999',
     fontFamily: 'WorkSans_400Regular',
     fontSize: 12,
     marginBottom: 40,
-    marginTop: 20,
-  },
+  }
 });
 
 export default SettingsScreen; 

@@ -1,3 +1,8 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React from 'react';
 import { StyleSheet, View, Text } from 'react-native';
 import { useTheme } from 'react-native-paper';

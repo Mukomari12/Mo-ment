@@ -1,3 +1,8 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React, { useState } from 'react';
 import { StyleSheet, View, TouchableOpacity, Alert } from 'react-native';
 import { Text, Surface, useTheme, Menu, IconButton, Divider } from 'react-native-paper';
