@@ -6,6 +6,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Constants for AsyncStorage keys
+const ONBOARDING_COMPLETE_KEY = 'mowment_onboarding_complete';
+
 type OnboardingScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Onboarding'>;
 };
@@ -47,6 +50,57 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
     itemVisiblePercentThreshold: 50,
   }).current;
 
+  // Skip onboarding and navigate to Welcome
+  const skipOnboarding = async () => {
+    try {
+      // Store that onboarding is complete
+      await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+      console.log('Onboarding SKIPPED and marked as COMPLETE in AsyncStorage');
+      
+      // Navigate with subtle haptic feedback
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Navigate to Welcome screen
+      console.log('Navigating to Welcome');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
+      // Navigate anyway in case of error
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    }
+  };
+
+  // Mark onboarding as complete and navigate
+  const completeOnboarding = async () => {
+    try {
+      // Store that onboarding is complete
+      await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+      console.log('Onboarding marked as COMPLETE in AsyncStorage');
+      
+      // Navigate to Welcome screen
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      console.log('Navigating to Welcome');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
+      // Navigate anyway in case of error
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      });
+    }
+  };
+
   const goToNextSlide = async () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({
@@ -54,9 +108,8 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
         animated: true,
       });
     } else {
-      // Last slide, navigate to Passkey screen without saving completion status
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      navigation.replace('Passkey');
+      // Last slide, complete onboarding and navigate to Welcome screen
+      completeOnboarding();
     }
   };
 
@@ -107,6 +160,15 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.skipButton}
+          onPress={skipOnboarding}
+        >
+          <Text style={styles.skipText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
+      
       <FlatList
         ref={flatListRef}
         data={slides}
@@ -141,6 +203,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F9F6F2',
+  },
+  header: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+  },
+  skipButton: {
+    padding: 10,
+  },
+  skipText: {
+    color: '#b58a65',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   slide: {
     flex: 1,
