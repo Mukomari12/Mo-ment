@@ -1,9 +1,14 @@
-import React from 'react';
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
+import React, { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNavigationContainerRef } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import WelcomeScreen from '../screens/Welcome';
 import OnboardingScreen from '../screens/Onboarding';
-import PasskeyScreen from '../screens/Passkey';
 import DashboardScreen from '../screens/Dashboard';
 import TextEntryScreen from '../screens/TextEntry';
 import VoiceEntryScreen from '../screens/VoiceEntry';
@@ -19,23 +24,28 @@ import MonthlyCheckupScreen from '../screens/MonthlyCheckup';
 import ChatBotScreen from '../screens/ChatBot';
 import * as Haptics from 'expo-haptics';
 
+// Constants for AsyncStorage keys
+const ONBOARDING_COMPLETE_KEY = 'mowment_onboarding_complete';
+
 // Create a navigation ref that can be used outside of the React component tree
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
-// Navigation helper function for use outside of components
+// Function to navigate from outside of React components
 export function navigate(name: keyof RootStackParamList, params?: any) {
   if (navigationRef.isReady()) {
-    // @ts-ignore
     navigationRef.navigate(name, params);
   } else {
-    console.error('Navigation is not ready');
+    // Log error if navigation is attempted before container is ready
+    console.error(`Unable to navigate to ${name}, navigation ref not ready`);
   }
 }
 
 export type RootStackParamList = {
-  Welcome: undefined;
+  // Onboarding Stack
   Onboarding: undefined;
-  Passkey: undefined;
+  Welcome: undefined;
+  
+  // Main App Stack
   Dashboard: undefined;
   TextEntry: undefined;
   VoiceEntry: undefined;
@@ -54,11 +64,36 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator = () => {
-  console.log("AppNavigator rendering");
+  const [isOnboardingComplete, setIsOnboardingComplete] = useState<boolean | null>(null);
+  
+  // Check if the user has completed onboarding
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      try {
+        const onboardingCompleted = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        setIsOnboardingComplete(onboardingCompleted === 'true');
+        console.log('Onboarding complete?', onboardingCompleted === 'true');
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        setIsOnboardingComplete(false);
+      }
+    };
+    
+    checkOnboardingStatus();
+  }, []);
+  
+  // Show loading state while checking onboarding status
+  if (isOnboardingComplete === null) {
+    return null; // Or a loading spinner
+  }
+  
+  // Use a single navigator with all screens, but change the initial route based on onboarding status
+  const initialRoute = isOnboardingComplete ? "Dashboard" : "Onboarding";
+  console.log(`Using initial route: ${initialRoute}`);
   
   return (
     <Stack.Navigator
-      initialRouteName="Welcome"
+      initialRouteName={initialRoute}
       screenOptions={{
         headerShown: true,
         gestureEnabled: true,
@@ -77,49 +112,31 @@ const AppNavigator = () => {
         headerBackVisible: true,
         headerShadowVisible: false,
         headerBackButtonMenuEnabled: true,
-        headerLeft: ({ canGoBack }) => 
-          canGoBack 
-            ? undefined  // Use default back button
-            : null,      // No back button for screens that can't go back
       }}
       screenListeners={{
         state: (e) => {
           const currentRouteName = e.data?.state?.routes[e.data.state.index]?.name;
-          console.log(`Current screen: ${currentRouteName}`);
-          console.log('Navigation state change event:', JSON.stringify(e.data?.state));
-        },
-        focus: (e) => {
-          console.log(`Screen focused: ${e.target}`);
-        },
-        beforeRemove: (e) => {
-          console.log(`Screen about to be removed: ${e.target}`);
-        },
-        blur: (e) => {
-          console.log(`Screen blurred: ${e.target}`);
-        },
-        transitionStart: (e) => {
-          console.log(`Screen transition started to: ${e.target}`);
-        },
-        transitionEnd: (e) => {
-          console.log(`Screen transition completed to: ${e.target}`);
-        },
+          const currentRouteParams = e.data?.state?.routes[e.data.state.index]?.params;
+          console.log(`Current route: ${currentRouteName} (index: ${e.data?.state?.index})`);
+          console.log(`Current route params: ${currentRouteParams ? JSON.stringify(currentRouteParams) : 'none'}`);
+          console.log(`Available routes: ${e.data?.state?.routeNames.join(', ')}`);
+        }
       }}
     >
-      <Stack.Screen 
-        name="Welcome" 
-        component={WelcomeScreen} 
-        options={{ headerShown: false }} 
-      />
+      {/* Onboarding */}
       <Stack.Screen 
         name="Onboarding" 
-        component={OnboardingScreen} 
+        component={OnboardingScreen}
         options={{ headerShown: false }}
       />
+      
       <Stack.Screen 
-        name="Passkey" 
-        component={PasskeyScreen} 
+        name="Welcome" 
+        component={WelcomeScreen}
         options={{ headerShown: false }}
       />
+      
+      {/* Main screens */}
       <Stack.Screen 
         name="Dashboard" 
         component={DashboardScreen} 
@@ -182,17 +199,17 @@ const AppNavigator = () => {
       <Stack.Screen 
         name="EntryDetail" 
         component={EntryDetailScreen} 
-        options={{ title: "Entry Detail" }}
+        options={{ title: "Entry Details" }}
       />
       <Stack.Screen 
         name="MonthlyCheckup" 
         component={MonthlyCheckupScreen} 
-        options={{ title: "Monthly Review" }}
+        options={{ title: "Monthly Checkup" }}
       />
       <Stack.Screen 
         name="ChatBot" 
         component={ChatBotScreen} 
-        options={{ title: "Mo-ment Companion" }}
+        options={{ title: "AI Journal Assistant" }}
       />
     </Stack.Navigator>
   );

@@ -37,7 +37,6 @@
     "expo-linear-gradient": "~14.1.4",
     "expo-secure-store": "~14.2.3",
     "expo-status-bar": "~2.1.0",
-    "firebase": "^11.7.1",
     "lottie-react-native": "7.1.0",
     "metro": "^0.82.0",
     "metro-resolver": "^0.82.3",

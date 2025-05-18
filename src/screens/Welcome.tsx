@@ -1,67 +1,67 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React from 'react';
-import { View, StyleSheet, Image, SafeAreaView, Dimensions } from 'react-native';
-import { Button, Text, useTheme } from 'react-native-paper';
+import { View, StyleSheet, Image, SafeAreaView } from 'react-native';
+import { Text, Button } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { useSpacing } from '../utils/useSpacing';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type WelcomeScreenProps = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
 };
 
 const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
-  const theme = useTheme();
-  const { hPad } = useSpacing();
-  const { width } = Dimensions.get('window');
-
-  const handleGetStarted = () => {
-    console.log("Get Started button pressed");
-    navigation.navigate('Onboarding');
+  const handleGetStarted = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      // Mark onboarding as complete
+      await AsyncStorage.setItem('mowment_onboarding_complete', 'true');
+      // Navigate to dashboard
+      navigation.navigate('Dashboard');
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
+    }
   };
 
   return (
-    <SafeAreaView style={[styles.container, {backgroundColor: '#F9F6F2'}]}>
-      {/* Main container with fixed positioning for reliable layout */}
+    <SafeAreaView style={styles.container}>
+      <LinearGradient
+        colors={['#f9f6f2', '#efe8df']}
+        style={styles.gradient}
+      >
       <View style={styles.content}>
-        {/* Top section with logo and text */}
-        <View style={styles.topSection}>
+          <View style={styles.logoContainer}>
           <Image 
             source={require('../../assets/branding/logo_1024.png')} 
             style={styles.logo} 
             resizeMode="contain"
           />
-          <Text 
-            style={styles.appTitle}
-            variant="headlineLarge"
-          >
-            Mo-ment
-          </Text>
-          <Text 
-            style={styles.tagline}
-          >
-            Capture life, one moment at a time
+            <Text style={styles.appName}>Mo-ment</Text>
+            <Text style={styles.tagline}>Capture life's meaningful moments</Text>
+            <Text style={styles.definition}>
+              (n.) "a moment of reflection, gratitude, and mindfulness"
           </Text>
         </View>
         
-        {/* Bottom section with button */}
-        <View style={styles.bottomSection}>
+          <View style={styles.buttonContainer}>
           <Button 
             mode="contained" 
             onPress={handleGetStarted}
-            style={styles.button}
-            labelStyle={styles.buttonLabel}
+            style={styles.startButton}
             contentStyle={styles.buttonContent}
-            buttonColor="#b58a65"
+            labelStyle={styles.buttonLabel}
           >
             Get Started
           </Button>
-          <Text 
-            style={styles.definition}
-          >
-            (n.) "for&nbsp;all&nbsp;the&nbsp;moments&nbsp;that&nbsp;truly&nbsp;matter"
-          </Text>
+          </View>
         </View>
-      </View>
+      </LinearGradient>
     </SafeAreaView>
   );
 };
@@ -69,63 +69,69 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9F6F2',
+  },
+  gradient: {
+    flex: 1,
   },
   content: {
     flex: 1,
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingTop: 100,
+    padding: 30,
+    paddingTop: 60,
     paddingBottom: 50,
-  },
-  topSection: {
     alignItems: 'center',
-    width: '100%',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: 40,
   },
   logo: {
     width: 120,
     height: 120,
     marginBottom: 20,
   },
-  appTitle: {
-    fontWeight: 'bold',
-    fontSize: 32,
-    marginBottom: 8,
+  appName: {
+    fontSize: 42,
+    fontFamily: 'PlayfairDisplay_700Bold',
     color: '#3d2f28',
-    textAlign: 'center',
+    marginBottom: 12,
   },
   tagline: {
     fontSize: 18,
-    color: '#3d2f28',
+    fontFamily: 'WorkSans_400Regular',
+    color: '#6a4e42',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  definition: {
+    fontSize: 14,
+    fontFamily: 'PlayfairDisplay_400Regular',
+    fontStyle: 'italic',
+    color: '#8b7b70',
     textAlign: 'center',
   },
-  bottomSection: {
+  buttonContainer: {
     width: '100%',
-    paddingHorizontal: 20,
-    alignItems: 'center',
+    marginBottom: 40,
   },
-  button: {
-    width: '100%',
+  startButton: {
+    marginBottom: 16,
     borderRadius: 12,
-    marginBottom: 30,
-  },
-  buttonLabel: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
+    backgroundColor: '#b58a65',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   buttonContent: {
     height: 56,
     width: '100%',
   },
-  definition: {
-    fontStyle: 'italic',
-    fontSize: 14,
-    fontFamily: 'Baskerville',
-    color: '#3d2f28',
-    textAlign: 'center',
-    opacity: 0.7,
+  buttonLabel: {
+    fontSize: 16,
+    fontFamily: 'WorkSans_500Medium',
+    letterSpacing: 0.5,
   },
 });
 

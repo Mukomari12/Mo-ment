@@ -8,7 +8,7 @@ import { enableScreens } from 'react-native-screens';
 enableScreens();
 import React, { useEffect } from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
-import { Provider as PaperProvider, Portal, Snackbar } from 'react-native-paper';
+import { Provider as PaperProvider } from 'react-native-paper';
 import AppNavigator, { navigationRef } from './src/navigation/AppNavigator';
 import { theme } from './src/theme/mo-mentTheme';
 import { StatusBar } from 'expo-status-bar';
@@ -26,12 +26,9 @@ import {
   WorkSans_600SemiBold
 } from '@expo-google-fonts/work-sans';
 import { View, ActivityIndicator, Text } from 'react-native';
-import { AuthProvider } from './src/contexts/AuthContext';
-import { usingMockAuth } from './src/lib/firebaseClient';
 
 export default function App() {
   console.log("App component started");
-  console.log("Using mock auth:", usingMockAuth ? "Yes" : "No");
 
   const [playfairLoaded] = usePlayfairDisplay({
     'PlayfairDisplay_400Regular': PlayfairDisplay_400Regular,
@@ -77,44 +74,32 @@ export default function App() {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <PaperProvider theme={theme}>
-          <AuthProvider>
-            <BottomSheetModalProvider>
-              <NavigationContainer 
-                ref={navigationRef} 
-                theme={navigationTheme} 
-                onStateChange={(state) => {
-                  console.log('Navigation state changed:', JSON.stringify(state));
-                  // Debug info to help diagnose navigation
-                  if (state && state.routes) {
-                    const currentRoute = state.routes[state.index];
-                    console.log(`Current route: ${currentRoute.name} (index: ${state.index})`);
-                    console.log(`Current route params:`, currentRoute.params || 'none');
-                    console.log(`Available routes:`, state.routes.map(r => r.name).join(', '));
-                  }
-                }}
-                onReady={() => {
-                  console.log('Navigation container is ready');
-                }}
-                fallback={<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={theme.colors.primary} />
-                  <Text style={{ marginTop: 10 }}>Loading navigation...</Text>
-                </View>}
-              >
-                <StatusBar style="dark" backgroundColor={theme.colors.background} />
-                <AppNavigator />
-                {usingMockAuth && (
-                  <Snackbar
-                    visible={true}
-                    onDismiss={() => {}}
-                    duration={5000}
-                    style={{ backgroundColor: '#ff9800' }}
-                  >
-                    Using mock authentication (Expo Go compatibility mode)
-                  </Snackbar>
-                )}
-              </NavigationContainer>
-            </BottomSheetModalProvider>
-          </AuthProvider>
+          <BottomSheetModalProvider>
+            <NavigationContainer 
+              ref={navigationRef} 
+              theme={navigationTheme} 
+              onStateChange={(state) => {
+                console.log('Navigation state changed:', JSON.stringify(state));
+                // Debug info to help diagnose navigation
+                if (state && state.routes) {
+                  const currentRoute = state.routes[state.index];
+                  console.log(`Current route: ${currentRoute.name} (index: ${state.index})`);
+                  console.log(`Current route params:`, currentRoute.params || 'none');
+                  console.log(`Available routes:`, state.routes.map(r => r.name).join(', '));
+                }
+              }}
+              onReady={() => {
+                console.log('Navigation container is ready');
+              }}
+              fallback={<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={{ marginTop: 10 }}>Loading navigation...</Text>
+              </View>}
+            >
+              <StatusBar style="dark" backgroundColor={theme.colors.background} />
+              <AppNavigator />
+            </NavigationContainer>
+          </BottomSheetModalProvider>
         </PaperProvider>
       </GestureHandlerRootView>
     );

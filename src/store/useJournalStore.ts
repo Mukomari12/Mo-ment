@@ -1,11 +1,19 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import { create } from 'zustand';
 import { MonthlyReport, MoodAnalysis, EmotionTrend } from '../api/openai';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import NetInfo from '@react-native-community/netinfo';
 
 export type Emotion = {
   label: string;
   emoji: string;
+  date?: string;
+  score?: number;
 };
 
 export type Entry = {
@@ -14,6 +22,7 @@ export type Entry = {
   type: 'text' | 'voice' | 'media';
   content: string;
   mood?: Emotion;
+  emotion?: Emotion;
   uri?: string; // For voice or media entries
   tags: string[];
 };
@@ -38,13 +47,15 @@ interface JournalState {
   removeEntry: (id: string) => void;
   
   // Moods tracking over time
-  moods: { date: string; score: number }[];
+  moods: Emotion[];
   
   // User settings
   settings: {
-    remindersOn: boolean;
+    darkMode: boolean;
+    language: string;
+    reminders: boolean;
     reminderTime: string;
-    theme: 'light' | 'dark' | 'system';
+    cloudBackup: boolean;
   };
   setSettings: (settings: Partial<JournalState['settings']>) => void;
   
@@ -69,6 +80,8 @@ interface JournalState {
   lastMonthlyAnalysisMonth: string; // Format: "YYYY-MM"
   incrementMonthlyAnalysisCount: () => void;
   setLastMonthlyAnalysisMonth: (month: string) => void;
+  
+  lastSynced: number | null;
 }
 
 // Demo entries for dev mode
@@ -77,7 +90,7 @@ const demoEntries: Entry[] = [
     id: '1',
     type: 'text',
     content: 'Started using this journal app to track my daily mood and thoughts.',
-    mood: 3,
+    mood: { label: 'Happy', emoji: '😊' },
     tags: ['Personal'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 3, // 3 days ago
   },
@@ -85,7 +98,7 @@ const demoEntries: Entry[] = [
     id: '2',
     type: 'text',
     content: 'Had a great day at the park with friends. The weather was perfect!',
-    mood: 4,
+    mood: { label: 'Excited', emoji: '🤩' },
     tags: ['Friends', 'Outdoors'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24 * 2, // 2 days ago
   },
@@ -93,7 +106,7 @@ const demoEntries: Entry[] = [
     id: '3',
     type: 'text',
     content: 'Work was stressful today, but I managed to get through it.',
-    mood: 2,
+    mood: { label: 'Stressed', emoji: '😓' },
     tags: ['Work', 'Stress'],
     createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
   },
@@ -174,11 +187,12 @@ const mockEntries: Entry[] = [
 ];
 
 // Helper function to generate mock mood data
-function generateMockMoods() {
-  return Array.from({ length: 60 }).map((_, i) => ({
-    date: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    score: Math.random() * 10,
-  }));
+function generateMockMoods(): Emotion[] {
+  const defaultMoods: Emotion[] = [
+    { date: new Date().toISOString().split('T')[0], score: 3, label: 'Neutral', emoji: '😐' },
+    // Add more default moods as needed
+  ];
+  return defaultMoods;
 }
 
 // Mock monthly report
@@ -206,124 +220,143 @@ export const globalLimits = {
   }
 };
 
-// Create the store with persistence
-export const useJournalStore = create<JournalState>()(
+// Create and export the Zustand store
+const useJournalStore = create<JournalState>()(
   persist(
     (set, get) => ({
-      // Journal entries state
-      entries: mockEntries,
-      addEntry: (entry) => set((state) => ({
-        entries: [
-          {
-            ...entry,
-            id: Date.now().toString(),
-            createdAt: Date.now(),
-          },
-          ...state.entries,
-        ],
-      })),
-      addVoiceEntry: (audioUri, transcript) => set(s => ({
-        entries: [{
-          id: Date.now().toString(),
-          createdAt: Date.now(),
-          type: 'voice',
-          uri: audioUri,
-          content: transcript,
-          tags: [],
-        }, ...s.entries]
-      })),
-      addMediaEntry: (photoUri, caption, mood, tags = []) => set(s => ({
-        entries: [{
-          id: Date.now().toString(),
-          createdAt: Date.now(),
-          type: 'media',
-          uri: photoUri,
-          content: caption,
-          mood,
-          tags
-        }, ...s.entries]
-      })),
-      removeEntry: (id) => set(state => ({
-        entries: state.entries.filter(entry => entry.id !== id)
-      })),
-      
-      // Moods state
+      // Initial state
+      entries: demoEntries,
       moods: generateMockMoods(),
-      
-      // Settings state
       settings: {
-        remindersOn: false,
+        darkMode: false,
+        language: 'en',
+        reminders: true,
         reminderTime: '20:00',
-        theme: 'light'
+        cloudBackup: false,
       },
-      setSettings: (newSettings) => set(s => ({
-        settings: {
-          ...s.settings,
-          ...newSettings
-        }
-      })),
-      
-      // Life Eras state
       eras: [],
-      setEras: (newEras) => set(() => ({ 
-        eras: newEras.map(era => ({
+      lastEraGeneration: 0,
+      monthlyReports: { [currentMonth]: mockMonthlyReport },
+      moodAnalysis: {},
+      monthlyAnalysisCount: 0,
+      lastMonthlyAnalysisMonth: '',
+      lastSynced: null,
+
+      // Methods for entries
+      addEntry: (entry) => {
+        const id = Date.now().toString();
+        const newEntry = { ...entry, id, createdAt: Date.now() };
+        set((state) => ({ entries: [newEntry, ...state.entries] }));
+      },
+      
+      addVoiceEntry: (audioUri, transcript) => {
+        const id = Date.now().toString();
+        const newEntry = { 
+          id, 
+          createdAt: Date.now(),
+          type: 'voice' as const,
+          content: transcript,
+          uri: audioUri,
+          tags: ['voice']
+        };
+        set((state) => ({ entries: [newEntry, ...state.entries] }));
+      },
+      
+      addMediaEntry: (photoUri, caption, mood, tags = []) => {
+        const id = Date.now().toString();
+        const newEntry = { 
+          id, 
+          createdAt: Date.now(),
+          type: 'media' as const,
+          content: caption,
+          uri: photoUri,
+          mood,
+          tags: [...tags, 'photo']
+        };
+        set((state) => ({ entries: [newEntry, ...state.entries] }));
+      },
+      
+      removeEntry: (id) => {
+        set((state) => ({
+          entries: state.entries.filter((entry) => entry.id !== id)
+        }));
+      },
+      
+      // Methods for settings
+      setSettings: (newSettings) => {
+        set((state) => ({
+          settings: { ...state.settings, ...newSettings }
+        }));
+      },
+      
+      // Methods for life eras
+      setEras: (newEras) => {
+        const erasWithMetadata = newEras.map(era => ({
           ...era,
           generatedAt: Date.now(),
           isExpanded: false
-        }))
-      })),
-      addEras: (newEras) => set(state => ({ 
-        eras: [
-          ...newEras.map(era => ({
-            ...era,
-            generatedAt: Date.now(),
-            isExpanded: false
-          })),
-          ...state.eras
-        ] 
-      })),
-      toggleEraExpanded: (eraIndex) => set(state => ({
-        eras: state.eras.map((era, index) => 
-          index === eraIndex ? { ...era, isExpanded: !era.isExpanded } : era
-        )
-      })),
-      lastEraGeneration: 0,
-      setLastEraGeneration: (timestamp) => set(() => ({ lastEraGeneration: timestamp })),
+        }));
+        set({ eras: erasWithMetadata });
+      },
       
-      // Monthly reports state
-      monthlyReports: {} as Record<string, MonthlyReport>,
-      addMonthlyReport: (month, report) => set(state => ({
-        monthlyReports: {
-          ...state.monthlyReports,
-          [month]: report
-        }
-      })),
+      addEras: (newEras) => {
+        const erasWithMetadata = newEras.map(era => ({
+          ...era,
+          generatedAt: Date.now(),
+          isExpanded: false
+        }));
+        set((state) => ({ 
+          eras: [...state.eras, ...erasWithMetadata] 
+        }));
+      },
       
-      // Monthly mood analysis
-      moodAnalysis: {} as Record<string, MoodAnalysis>,
-      addMoodAnalysis: (month, analysis) => set(state => ({
-        moodAnalysis: {
-          ...state.moodAnalysis,
-          [month]: analysis
-        }
-      })),
+      toggleEraExpanded: (eraIndex) => {
+        set((state) => {
+          const updatedEras = [...state.eras];
+          if (updatedEras[eraIndex]) {
+            updatedEras[eraIndex] = {
+              ...updatedEras[eraIndex],
+              isExpanded: !updatedEras[eraIndex].isExpanded
+            };
+          }
+          return { eras: updatedEras };
+        });
+      },
       
-      // Monthly analysis tracking
-      monthlyAnalysisCount: 0,
-      lastMonthlyAnalysisMonth: '',
-      incrementMonthlyAnalysisCount: () => set(s => ({ monthlyAnalysisCount: s.monthlyAnalysisCount + 1 })),
-      setLastMonthlyAnalysisMonth: (month) => set(() => ({ 
-        lastMonthlyAnalysisMonth: month,
-        // Reset counter if it's a new month
-        monthlyAnalysisCount: get().lastMonthlyAnalysisMonth === month ? get().monthlyAnalysisCount : 0
-      })),
+      setLastEraGeneration: (timestamp) => {
+        set({ lastEraGeneration: timestamp });
+      },
+      
+      // Methods for monthly reports
+      addMonthlyReport: (month, report) => {
+        set((state) => ({
+          monthlyReports: { ...state.monthlyReports, [month]: report }
+        }));
+      },
+      
+      // Methods for mood analysis
+      addMoodAnalysis: (month, analysis) => {
+        set((state) => ({
+          moodAnalysis: { ...state.moodAnalysis, [month]: analysis }
+        }));
+      },
+      
+      // Methods for tracking monthly analysis
+      incrementMonthlyAnalysisCount: () => {
+        set((state) => ({
+          monthlyAnalysisCount: state.monthlyAnalysisCount + 1
+        }));
+      },
+      
+      setLastMonthlyAnalysisMonth: (month) => {
+        set({ lastMonthlyAnalysisMonth: month });
+      },
     }),
     {
-      name: 'mowment-storage',
+      name: 'journal-storage',
       storage: createJSONStorage(() => AsyncStorage),
     }
   )
 );
 
-// Helper selector
-export const selectEntries = (s: JournalState) => s.entries; 
+export default useJournalStore; 
