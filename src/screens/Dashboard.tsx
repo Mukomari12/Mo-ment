@@ -1,3 +1,8 @@
+/** 
+ * © 2025 Mohammad Muqtader Omari – All Rights Reserved.
+ * This file is part of the "Mowment" project (™). Licensed under the MIT License.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity } from 'react-native';
 import { 
@@ -11,7 +16,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useJournalStore, Entry } from '../store/useJournalStore';
+import useJournalStore, { type Entry } from '../store/useJournalStore';
 import EntryCard from '../components/EntryCard';
 import * as Haptics from 'expo-haptics';
 import { devLog } from '../utils/devLog';
@@ -93,6 +98,23 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
               try {
                 navigation.navigate('MoodCalendar');
                 devLog('Navigate to MoodCalendar called');
+              } catch (error) {
+                devLog('Navigation error:', error);
+              }
+            }}
+            style={styles.headerIcon}
+          />
+          
+          <IconButton
+            icon="account-circle"
+            size={28}
+            iconColor="#b58a65"
+            onPress={() => {
+              devLog('Profile button pressed');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              try {
+                navigation.navigate('Settings');
+                devLog('Navigate to Settings called');
               } catch (error) {
                 devLog('Navigation error:', error);
               }
