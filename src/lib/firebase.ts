@@ -4,15 +4,10 @@
  */
 
 import { initializeApp, getApp } from 'firebase/app';
-import { 
-  getAuth,
-  setPersistence,
-  browserLocalPersistence
-} from 'firebase/auth';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
-import { Platform } from 'react-native';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
+import { getStorage } from 'firebase/storage';
 
 // Firebase configuration from GoogleService-Info.plist
 const firebaseConfig = {
@@ -34,58 +29,9 @@ try {
 
 // Initialize Firebase services
 const auth = getAuth(app);
-
-// Enable persistence
-try {
-  setPersistence(auth, browserLocalPersistence)
-    .then(() => {
-      console.log('Firebase auth persistence enabled');
-    })
-    .catch((error) => {
-      console.error('Error setting persistence:', error);
-    });
-} catch (error) {
-  console.warn('Could not set persistence:', error);
-}
-
-// Initialize Firestore
 const db = getFirestore(app);
-
-// Initialize Firebase Functions
 const functions = getFunctions(app);
-
-// Initialize Storage
 const storage = getStorage(app);
-
-// Connect to emulators in development
-if (__DEV__) {
-  try {
-    // Only connect to emulators if specifically enabled
-    const useEmulators = false; // Set to true to use emulators
-
-    if (useEmulators) {
-      const host = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
-      
-      // Auth emulator
-      // connectAuthEmulator(auth, `http://${host}:9099`);
-      console.log('Connected to Auth emulator');
-      
-      // Firestore emulator
-      connectFirestoreEmulator(db, host, 8080);
-      console.log('Connected to Firestore emulator');
-      
-      // Functions emulator
-      connectFunctionsEmulator(functions, host, 5001);
-      console.log('Connected to Functions emulator');
-      
-      // Storage emulator
-      connectStorageEmulator(storage, host, 9199);
-      console.log('Connected to Storage emulator');
-    }
-  } catch (error) {
-    console.error('Error connecting to emulators:', error);
-  }
-}
 
 // Helper function to safely perform Firebase operations with error handling
 export const safeFirebaseOperation = async <T>(
