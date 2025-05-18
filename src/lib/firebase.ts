@@ -5,8 +5,9 @@
 
 import { initializeApp, getApp } from 'firebase/app';
 import { 
-  getAuth, 
-  connectAuthEmulator 
+  getAuth,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
@@ -31,8 +32,21 @@ try {
   app = initializeApp(firebaseConfig);
 }
 
-// Initialize Auth
+// Initialize Firebase services
 const auth = getAuth(app);
+
+// Enable persistence
+try {
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      console.log('Firebase auth persistence enabled');
+    })
+    .catch((error) => {
+      console.error('Error setting persistence:', error);
+    });
+} catch (error) {
+  console.warn('Could not set persistence:', error);
+}
 
 // Initialize Firestore
 const db = getFirestore(app);
@@ -53,7 +67,7 @@ if (__DEV__) {
       const host = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
       
       // Auth emulator
-      connectAuthEmulator(auth, `http://${host}:9099`);
+      // connectAuthEmulator(auth, `http://${host}:9099`);
       console.log('Connected to Auth emulator');
       
       // Firestore emulator
