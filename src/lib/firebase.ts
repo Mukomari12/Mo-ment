@@ -4,7 +4,7 @@
  */
 
 import { initializeApp, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth, setPersistence, indexedDBLocalPersistence } from 'firebase/auth';
+import { getAuth, Auth, onAuthStateChanged, User } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getFunctions, Functions } from 'firebase/functions';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
@@ -21,56 +21,90 @@ const firebaseConfig = {
   appId: Constants.expoConfig?.extra?.FIREBASE_APP_ID || "1:188833780043:ios:a2682386378695131f58ce"
 };
 
-// Define types for Firebase services
-interface FirebaseServices {
-  app: FirebaseApp | null;
-  auth: Auth | null;
-  db: Firestore | null;
-  functions: Functions | null;
-  storage: FirebaseStorage | null;
-}
-
-// Initialize Firebase
+// Make sure we initialize Firebase early
 let app: FirebaseApp;
 try {
+  console.log("Initializing Firebase app...");
   app = getApp();
+  console.log("Firebase app already initialized");
 } catch (error) {
+  console.log("Initializing new Firebase app");
   app = initializeApp(firebaseConfig);
 }
 
-// Initialize Firebase Auth
-// Note: This is a basic initialization that will work with Expo Go.
-// For a production app, we would use React Native Firebase's native modules.
+// Initialize Firebase Auth BEFORE other Firebase services
 const auth = getAuth(app);
+console.log("Firebase Auth initialized:", !!auth);
+
+// Define a custom class that wraps the Firebase auth object to ensure it's loaded
+class AuthWrapper {
+  private _auth: Auth;
+  private _user: User | null = null;
+  private _isReady: boolean = false;
+  private _readyCallbacks: Array<() => void> = [];
+
+  constructor(auth: Auth) {
+    this._auth = auth;
+    
+    // Set up auth state listener to maintain local state
+    onAuthStateChanged(this._auth, (user) => {
+      console.log("Auth state changed, user:", user?.uid);
+      this._user = user;
+      this._isReady = true;
+      
+      // Call ready callbacks
+      this._readyCallbacks.forEach(callback => callback());
+      this._readyCallbacks = [];
+      
+      // Store minimal user data in AsyncStorage
+      if (user) {
+        AsyncStorage.setItem('auth_user', JSON.stringify({
+          uid: user.uid,
+          email: user.email,
+          emailVerified: user.emailVerified
+        })).catch(err => console.error("Error storing auth state:", err));
+      } else {
+        AsyncStorage.removeItem('auth_user').catch(err => console.error("Error clearing auth state:", err));
+      }
+    });
+  }
+  
+  // Get the current user
+  get currentUser(): User | null {
+    return this._user;
+  }
+  
+  // Ensure auth is ready before proceeding
+  whenReady(): Promise<void> {
+    if (this._isReady) {
+      return Promise.resolve();
+    }
+    
+    return new Promise((resolve) => {
+      this._readyCallbacks.push(resolve);
+    });
+  }
+  
+  // Forward all method calls to the underlying auth object
+  onAuthStateChanged(callback: (user: User | null) => void): () => void {
+    return onAuthStateChanged(this._auth, callback);
+  }
+  
+  signOut(): Promise<void> {
+    return this._auth.signOut();
+  }
+  
+  // Add other auth methods as needed...
+}
+
+// Create a wrapper for Firebase Auth
+const wrappedAuth = new AuthWrapper(auth);
 
 // Initialize other Firebase services
+console.log("Initializing other Firebase services");
 const db = getFirestore(app);
 const functions = getFunctions(app);
 const storage = getStorage(app);
-
-// Set up AsyncStorage-based persistence manually
-// Store the user's auth state in AsyncStorage when it changes
-auth.onAuthStateChanged(async (user) => {
-  if (user) {
-    try {
-      // Store minimal user data
-      const userData = {
-        uid: user.uid,
-        email: user.email,
-        emailVerified: user.emailVerified,
-      };
-      await AsyncStorage.setItem('auth_user', JSON.stringify(userData));
-    } catch (error) {
-      console.error('Error storing auth state:', error);
-    }
-  } else {
-    try {
-      await AsyncStorage.removeItem('auth_user');
-    } catch (error) {
-      console.error('Error removing auth state:', error);
-    }
-  }
-});
 
 // Helper function to safely perform Firebase operations with error handling
 export const safeFirebaseOperation = async <T>(
@@ -78,6 +112,8 @@ export const safeFirebaseOperation = async <T>(
   fallback: T
 ): Promise<T> => {
   try {
+    // Make sure auth is ready before proceeding
+    await wrappedAuth.whenReady();
     return await operation();
   } catch (error: any) {
     console.error('Firebase operation failed:', error?.message || error);
@@ -107,14 +143,9 @@ export const canPerformWrite = async (): Promise<boolean> => {
   return true; // We'll implement network detection elsewhere
 };
 
-// Export Firebase services
-export {
-  app,
-  auth,
-  db,
-  functions,
-  storage
-};
+// Export the wrapped auth object as if it were the regular auth object
+// This ensures compatibility with existing code
+export { app, wrappedAuth as auth, db, functions, storage };
 
 // Also export the getters for compatibility
 export {
