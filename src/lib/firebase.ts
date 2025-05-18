@@ -4,20 +4,21 @@
  */
 
 import { initializeApp, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, setPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getFunctions, Functions } from 'firebase/functions';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Firebase configuration from GoogleService-Info.plist
+// Use configuration from environment variables or fallback to hardcoded values for development
 const firebaseConfig = {
-  apiKey: "AIzaSyANbE9eeJuC4DUvJe4lNC8pFn-LLieejTo",
-  authDomain: "mo-ment-prod.firebaseapp.com",
-  projectId: "mo-ment-prod",
-  storageBucket: "mo-ment-prod.firebasestorage.app",
-  messagingSenderId: "188833780043",
-  appId: "1:188833780043:ios:a2682386378695131f58ce"
+  apiKey: Constants.expoConfig?.extra?.FIREBASE_API_KEY || "AIzaSyANbE9eeJuC4DUvJe4lNC8pFn-LLieejTo",
+  authDomain: Constants.expoConfig?.extra?.FIREBASE_AUTH_DOMAIN || "mo-ment-prod.firebaseapp.com",
+  projectId: Constants.expoConfig?.extra?.FIREBASE_PROJECT_ID || "mo-ment-prod",
+  storageBucket: Constants.expoConfig?.extra?.FIREBASE_STORAGE_BUCKET || "mo-ment-prod.firebasestorage.app",
+  messagingSenderId: Constants.expoConfig?.extra?.FIREBASE_SENDER_ID || "188833780043",
+  appId: Constants.expoConfig?.extra?.FIREBASE_APP_ID || "1:188833780043:ios:a2682386378695131f58ce"
 };
 
 // Define types for Firebase services
@@ -29,51 +30,47 @@ interface FirebaseServices {
   storage: FirebaseStorage | null;
 }
 
-// Initialize Firebase with delayed initialization
-const initializeFirebase = (): FirebaseServices => {
-  try {
-    // Get existing Firebase app instance or create a new one
-    let firebaseApp;
+// Initialize Firebase
+let app: FirebaseApp;
+try {
+  app = getApp();
+} catch (error) {
+  app = initializeApp(firebaseConfig);
+}
+
+// Initialize Firebase Auth
+// Note: This is a basic initialization that will work with Expo Go.
+// For a production app, we would use React Native Firebase's native modules.
+const auth = getAuth(app);
+
+// Initialize other Firebase services
+const db = getFirestore(app);
+const functions = getFunctions(app);
+const storage = getStorage(app);
+
+// Set up AsyncStorage-based persistence manually
+// Store the user's auth state in AsyncStorage when it changes
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
     try {
-      firebaseApp = getApp();
+      // Store minimal user data
+      const userData = {
+        uid: user.uid,
+        email: user.email,
+        emailVerified: user.emailVerified,
+      };
+      await AsyncStorage.setItem('auth_user', JSON.stringify(userData));
     } catch (error) {
-      firebaseApp = initializeApp(firebaseConfig);
+      console.error('Error storing auth state:', error);
     }
-    
-    // Initialize Firebase services
-    const firebaseAuth = getAuth(firebaseApp);
-    const firebaseDb = getFirestore(firebaseApp);
-    const firebaseFunctions = getFunctions(firebaseApp);
-    const firebaseStorage = getStorage(firebaseApp);
-    
-    return {
-      app: firebaseApp,
-      auth: firebaseAuth,
-      db: firebaseDb,
-      functions: firebaseFunctions,
-      storage: firebaseStorage
-    };
-  } catch (error) {
-    console.error("Error initializing Firebase:", error);
-    return {
-      app: null,
-      auth: null,
-      db: null,
-      functions: null,
-      storage: null
-    };
+  } else {
+    try {
+      await AsyncStorage.removeItem('auth_user');
+    } catch (error) {
+      console.error('Error removing auth state:', error);
+    }
   }
-};
-
-// Export Firebase services lazily to avoid early initialization
-let firebaseServices: FirebaseServices | undefined;
-
-export const getFirebaseServices = (): FirebaseServices => {
-  if (!firebaseServices) {
-    firebaseServices = initializeFirebase();
-  }
-  return firebaseServices;
-};
+});
 
 // Helper function to safely perform Firebase operations with error handling
 export const safeFirebaseOperation = async <T>(
@@ -88,49 +85,38 @@ export const safeFirebaseOperation = async <T>(
   }
 };
 
+// Helper function for handling Firestore errors
+export const handleFirestoreError = (error: any): string => {
+  console.error('Firestore operation error:', error);
+  
+  // Map common Firestore error codes to user-friendly messages
+  const errorCode = error?.code || '';
+  if (errorCode.includes('permission-denied')) {
+    return 'You do not have permission to perform this operation.';
+  } else if (errorCode.includes('not-found')) {
+    return 'The requested document was not found.';
+  } else if (errorCode.includes('already-exists')) {
+    return 'The document already exists.';
+  } else {
+    return error?.message || 'An unexpected error occurred.';
+  }
+};
+
 // Helper to check if we can perform write operations (needs online connectivity)
 export const canPerformWrite = async (): Promise<boolean> => {
   return true; // We'll implement network detection elsewhere
 };
 
-// For backward compatibility
-// Create getters for Firebase services that initialize lazily
-export const app = {} as FirebaseApp;
-export const auth = {} as Auth;
-export const db = {} as Firestore;
-export const functions = {} as Functions;
-export const storage = {} as FirebaseStorage;
+// Export Firebase services
+export {
+  app,
+  auth,
+  db,
+  functions,
+  storage
+};
 
-// Use a side effect to set up getters on the exported objects
-Object.defineProperties(app, {
-  __proto__: {
-    get() {
-      return Object.getPrototypeOf(getFirebaseServices().app || {});
-    }
-  }
-});
-
-Object.defineProperties(auth, {
-  currentUser: {
-    get() {
-      return getFirebaseServices().auth?.currentUser || null;
-    }
-  },
-  onAuthStateChanged: {
-    get() {
-      return getFirebaseServices().auth?.onAuthStateChanged.bind(getFirebaseServices().auth) || 
-             (() => (() => {}));
-    }
-  },
-  signOut: {
-    get() {
-      return getFirebaseServices().auth?.signOut.bind(getFirebaseServices().auth) || 
-             (() => Promise.resolve());
-    }
-  }
-});
-
-// Export the getters for compatibility
+// Also export the getters for compatibility
 export {
   getAuth,
   getFirestore,

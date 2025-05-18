@@ -15,7 +15,7 @@ export function checkApiKey(): boolean {
     return false;
   }
   
-  // For the key format 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
+  // Check for key format (usually starts with sk-proj-)
   console.log('API key appears valid');
   return true;
 }
